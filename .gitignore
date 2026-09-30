@@ -1,6 +1,6 @@
 node_modules/
 .next/
-out/
+/out/
 next-env.d.ts
 *.tsbuildinfo
 .env
@@ -10,11 +10,10 @@ coverage/
 playwright-report/
 test-results/
 # foundry
-cache/
+/cache/
 broadcast/*/31337/
 broadcast/**/dry-run/
 scratch/
-out/
 .next-e2e/
 dump.rdb
 broadcast/**/run-[0-9]*.json
