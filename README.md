@@ -164,7 +164,7 @@ Without Redis, cache and rate limits fall back to in-process memory (single inst
 | `SESSION_SECRET` | prod | ≥ 32 chars; HMAC key for session cookies |
 | `NEXT_PUBLIC_APP_URL` | yes | Absolute URL for OG images, badge links |
 | `NEXT_PUBLIC_DEMO_MODE` | no | `true` = demo fixtures only |
-| `NEXT_PUBLIC_REGISTRY_ADDRESS` | no | Deployed `VibeProofRegistry`; enables onchain anchoring |
+| `NEXT_PUBLIC_REGISTRY_ADDRESS` | no | `VibeProofRegistry` address; enables onchain anchoring. Testnet: `0x47b639e587FdBf9A8323d030C9930744BfbF2F2E` |
 | `INDEXER_INITIAL_BACKFILL_BLOCKS` | no | Tail start on first run (default 100000) |
 | `INDEXER_ACTIVITY_START` | no | Explicit activity start block (overrides the above) |
 | `INDEXER_MAX_TAIL_BLOCKS` | no | Max blocks the tail advances per tick (default 20000) |
@@ -185,6 +185,8 @@ npm run indexer:recount   # recompute counters for all covered tokens (after rul
 State lives in the `indexer_state` table: per-factory launch cursors, `activity_start` and the `activity` cursor. Each range commits atomically with its cursor, so a crash resumes cleanly. Holder deltas are applied only for newly inserted events, so re-processing a range can never double-count (covered by an integration test). Run exactly **one** indexer process per database. Proof checks older than 6 h are re-run every 10 minutes.
 
 ## Contract deployment (VibeProofRegistry)
+
+**Deployed on Robinhood Chain Testnet:** [`0x47b639e587FdBf9A8323d030C9930744BfbF2F2E`](https://explorer.testnet.chain.robinhood.com/address/0x47b639e587FdBf9A8323d030C9930744BfbF2F2E?tab=contract). It was deployed in block 126,651,474 (tx `0x2eabd62b…`), and its source is verified on Blockscout (solc 0.8.28). A live smoke test (`submitProof` → `hasProof` → server-side receipt verification) passed, and a mismatched hash was rejected. Details are in [`deployments/robinhood-testnet.json`](deployments/robinhood-testnet.json). The contract has no owner, so the deployer address holds no privileges.
 
 The registry is a **proof-anchoring primitive**: it stores `creator`, `token`, `metadataHash`, `metadataURI` and timestamps, and nothing subjective. It has no owner, admin, pause, upgrade path, payable function or token custody. Records are keyed by `(msg.sender, token)`; VibeProof only credits records whose `creator` equals the indexed launcher.
 
@@ -260,6 +262,6 @@ npm run test:e2e:build && npm run test:e2e   # Playwright, desktop + mobile, aga
   * Holder balances match Blockscout address-for-address on the tokens spot-checked. Counts differ only by the documented exclusions (the curve and protocol contracts).
   * Contract analysis, passport pages, creator pages, discover, feed and change detection.
   * Website checks against real sites.
-* **Tested locally only:** registry deployment and receipt-verified anchoring against anvil with chain ID 46630. The **registry is not deployed to Robinhood Chain Testnet** (no deployer key was used), so `NEXT_PUBLIC_REGISTRY_ADDRESS` is empty.
+* **Registry:** deployed to Robinhood Chain Testnet at `0x47b639e587FdBf9A8323d030C9930744BfbF2F2E`. Source is verified on Blockscout, and the anchor round-trip (submit onchain → server verifies the receipt; mismatched hash rejected) passed against the live chain. The wallet UI step that calls it has not been clicked through with a browser wallet.
 * **Not tested live:** GitHub checks (unit-tested against mocked API responses; the API was not reachable from the build sandbox) and the wallet-driven SIWE UI flow (signature verification itself is integration-tested with real signatures).
 * **Roadmap (Phase 2+):** wallet-linked watchlists, notifications, WebSocket tailing, project comparison, ecosystem graph (observed funding relationships only), Discord/Telegram bots, webhooks, and an optional AI summary layer constrained to cite evidence.

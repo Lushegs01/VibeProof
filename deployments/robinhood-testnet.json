@@ -1,0 +1,18 @@
+{
+  "network": "Robinhood Chain Testnet",
+  "chainId": 46630,
+  "VibeProofRegistry": {
+    "address": "0x47b639e587FdBf9A8323d030C9930744BfbF2F2E",
+    "deployTx": "0x2eabd62bf2fa887596dcfc5b666d3528729befa2eb9011778b63d0da88eacd4c",
+    "block": 126651474,
+    "deployer": "0x8B51af6F08C6D6977DeF06c8AaA2Ac6A2b44ea2D",
+    "compiler": "v0.8.28+commit.7893614a",
+    "sourceVerified": "Blockscout (Pass - Verified)",
+    "explorer": "https://explorer.testnet.chain.robinhood.com/address/0x47b639e587FdBf9A8323d030C9930744BfbF2F2E?tab=contract",
+    "smokeTest": {
+      "tx": "0x54fb431f983e0308d8568dcbc56a903a374dc89d5ac7dc4cfdd5ab9da69ebe83",
+      "note": "submitProof(token = registry itself, keccak256('vibeproof-deploy-smoke-test')) — test record only, not tied to any launch"
+    },
+    "deployedAt": "2026-09-30"
+  }
+}
