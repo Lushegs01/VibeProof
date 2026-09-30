@@ -158,8 +158,10 @@ Without Redis, cache and rate limits fall back to in-process memory (single inst
 | `ROBINHOOD_TESTNET_RPC_URL` | yes | JSON-RPC endpoint (public for dev, provider for prod) |
 | `ROBINHOOD_TESTNET_WSS_URL` | no | Reserved for WebSocket tailing |
 | `BLOCKSCOUT_API_URL` | yes | Blockscout base (`…/api`) |
-| `DATABASE_URL` | yes* | Postgres |
-| `REDIS_URL` | no | Shared cache and rate limiting |
+| `DATABASE_URL` | yes* | Postgres (`POSTGRES_URL` from Vercel's Neon integration is accepted as a fallback; `-pooler` URLs auto-disable prepared statements) |
+| `REDIS_URL` | no | Shared cache and rate limiting (`KV_URL` from Vercel's Upstash integration is accepted as a fallback) |
+| `CRON_SECRET` | serverless | Bearer secret for `GET /api/cron/indexer` (≥ 16 chars) |
+| `INDEXER_JOB_BUDGET_S` | no | Seconds a scheduled indexer run may take (default 300; the job stops 30 s earlier) |
 | `GITHUB_TOKEN` | no | Read-only token; raises GitHub limits from 60/h to 5000/h |
 | `SESSION_SECRET` | prod | ≥ 32 chars; HMAC key for session cookies |
 | `NEXT_PUBLIC_APP_URL` | yes | Absolute URL for OG images, badge links |
@@ -181,6 +183,13 @@ npm run indexer           # run forever (catches up, then polls)
 npm run indexer:once      # run until caught up to head, then exit
 npm run indexer:recount   # recompute counters for all covered tokens (after rule changes)
 ```
+
+Two ways to run it:
+
+* **Long-running worker** (`npm run indexer`) on any VM or container. It polls every 4 s.
+* **Scheduled serverless runs** via `GET /api/cron/indexer`, authenticated with `Authorization: Bearer $CRON_SECRET`. Each call ticks until caught up or until its time budget runs out, then returns a JSON summary. This is how it runs on Vercel (see below).
+
+Both hold the same Postgres advisory lock, so they can never write concurrently. A second run simply returns `{"status":"skipped"}`. During a first sync the activity tail waits until every factory's launch cursor has caught up, so no token is marked covered with missing early history.
 
 State lives in the `indexer_state` table: per-factory launch cursors, `activity_start` and the `activity` cursor. Each range commits atomically with its cursor, so a crash resumes cleanly. Holder deltas are applied only for newly inserted events, so re-processing a range can never double-count (covered by an integration test). Run exactly **one** indexer process per database. Proof checks older than 6 h are re-run every 10 minutes.
 
@@ -239,7 +248,7 @@ The embeddable badge is `<iframe src="https://<host>/embed/badge/0x…" width="3
 ## Testing
 
 ```bash
-npm test                    # unit + integration (Vitest): 138 tests
+npm test                    # unit + integration (Vitest): 141 tests
 npm run test:unit           # pure logic: address/URL validation, selector scan, decoding, diff, hashing, checks…
 npm run test:integration    # Postgres (DATABASE_URL_TEST, default vibeproof_test), live RPC, SIWE, anvil registry
 npm run forge:test          # Solidity (20 tests)
@@ -250,8 +259,31 @@ npm run test:e2e:build && npm run test:e2e   # Playwright, desktop + mobile, aga
 
 ## Deployment
 
-* **Web:** any Node host that runs `next build && next start` (Vercel, Fly, Render). Set the env vars above. Point `DATABASE_URL` at managed Postgres and `REDIS_URL` at Upstash or another Redis.
-* **Indexer:** a single long-running worker (`npm run indexer`) against the same database. Scale the web tier freely; run exactly one indexer.
+### Vercel (web + database + scheduled indexer)
+
+The repository is ready for Vercel. The `vercel-build` script runs migrations and then `next build`. Migrations are idempotent and skipped when no database is configured, so builds never fail for lack of one.
+
+1. **Database.** In the Vercel project, go to *Storage* → *Create Database* → **Neon (Postgres)** and connect it to the project for all environments. This injects `POSTGRES_URL` and `DATABASE_URL`, and the app accepts either. Tables are created on the next deploy.
+2. **Cache (recommended).** Go to *Storage* → **Upstash (Redis)**, which injects `KV_URL` (accepted), or set `REDIS_URL`. Without it, cache and rate limits are per-instance only.
+3. **Environment variables** (*Settings* → *Environment Variables*):
+   * `CRON_SECRET`: output of `openssl rand -hex 32`
+   * `SESSION_SECRET`: output of `openssl rand -hex 32`
+   * `NEXT_PUBLIC_APP_URL`: your production URL
+   * `NEXT_PUBLIC_REGISTRY_ADDRESS`: `0x47b639e587FdBf9A8323d030C9930744BfbF2F2E`
+   * `ROBINHOOD_TESTNET_RPC_URL`: a provider URL is strongly recommended, because the public RPC rate-limits
+   * `INDEXER_JOB_BUDGET_S`: `300` on Hobby/Pro with Fluid compute; lower it if your function limit is lower
+4. **Redeploy.** Migrations run during the build.
+5. **Schedule the indexer.** Pick one option:
+   * **GitHub Actions (any plan).** `.github/workflows/indexer-cron.yml` calls the endpoint every 5 minutes. Add the repository secrets `VIBEPROOF_URL` (production URL) and `CRON_SECRET` (the same value as in Vercel). You can trigger it once by hand from the *Actions* tab. It does nothing until both secrets exist.
+   * **Vercel Cron (Pro).** Add `{"crons":[{"path":"/api/cron/indexer","schedule":"*/5 * * * *"}]}` to a `vercel.json`. Vercel sends the `CRON_SECRET` bearer automatically. Hobby plans only allow daily crons, which is why this isn't committed.
+6. **Watch the first sync** at `/api/health` (`indexedThrough`, `lagBlocks`). A fresh database first indexes about 143k historical launches, at roughly 1M blocks per 45 s of run time. The activity tail then starts at head minus 100k blocks. Expect the first full sync to take a few scheduled runs.
+
+Each preview deployment connected to the same database shares its data. Only production should be scheduled.
+
+### Other hosts
+
+* **Web:** any Node host that runs `next build && next start` (Fly, Render, a VM). Set the env vars above.
+* **Indexer:** either a single long-running worker (`npm run indexer`) against the same database, or the scheduled endpoint above.
 * **RPC:** use a provider endpoint in production. The public RPC rate-limits.
 
 ## Current status (honest)

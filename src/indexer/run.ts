@@ -4,6 +4,7 @@ import { getDb, getSql } from "../lib/db/client";
 import { log } from "../lib/util/log";
 import { VibeIndexer } from "./indexer";
 import { recheckStaleProofs } from "../lib/services/proof-service";
+import { withIndexerLock } from "./job";
 
 const once = process.argv.includes("--once");
 const db = getDb();
@@ -30,25 +31,30 @@ if (process.argv.includes("--recount")) {
   process.exit(0);
 }
 
-const pollMs = Number(process.env.INDEXER_POLL_MS ?? 4000);
-const PROOF_RECHECK_EVERY_MS = 10 * 60_000;
-let lastProofRecheck = 0;
+// Hold the same advisory lock as the serverless job so two indexers never write concurrently.
+const ran = await withIndexerLock(async () => {
+  const pollMs = Number(process.env.INDEXER_POLL_MS ?? 4000);
+  const PROOF_RECHECK_EVERY_MS = 10 * 60_000;
+  let lastProofRecheck = 0;
 
-while (!stopping) {
-  try {
-    const r = await indexer.tick();
-    const lag = r.head - r.activityThrough;
-    log("info", "indexer.tick", { head: r.head, activityThrough: r.activityThrough, lag, newLaunches: r.newLaunches, newEvents: r.newEvents, backfilled: r.backfilled });
-    if (Date.now() - lastProofRecheck > PROOF_RECHECK_EVERY_MS) {
-      lastProofRecheck = Date.now();
-      const n = await recheckStaleProofs().catch(() => 0);
-      if (n) log("info", "indexer.proofs_rechecked", { count: n });
+  while (!stopping) {
+    try {
+      const r = await indexer.tick();
+      const lag = r.head - r.activityThrough;
+      log("info", "indexer.tick", { head: r.head, activityThrough: r.activityThrough, lag, newLaunches: r.newLaunches, newEvents: r.newEvents, backfilled: r.backfilled });
+      if (Date.now() - lastProofRecheck > PROOF_RECHECK_EVERY_MS) {
+        lastProofRecheck = Date.now();
+        const n = await recheckStaleProofs().catch(() => 0);
+        if (n) log("info", "indexer.proofs_rechecked", { count: n });
+      }
+      if (once && lag === 0n) break;
+      if (lag > 0n) continue; // catching up: no sleep
+    } catch (e) {
+      log("error", "indexer.tick_failed", { error: e instanceof Error ? e.message : String(e) });
     }
-    if (once && lag === 0n) break;
-    if (lag > 0n) continue; // catching up: no sleep
-  } catch (e) {
-    log("error", "indexer.tick_failed", { error: e instanceof Error ? e.message : String(e) });
+    await new Promise((r) => setTimeout(r, pollMs));
   }
-  await new Promise((r) => setTimeout(r, pollMs));
-}
+  return true;
+});
+if (ran === null) log("warn", "indexer.lock_held", { message: "Another indexer (e.g. the scheduled job) holds the lock; exiting." });
 await getSql()?.end();

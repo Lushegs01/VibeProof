@@ -71,9 +71,20 @@ export class VibeIndexer {
     const start = await this.ensureActivityStart(head);
     let newLaunches = 0;
     for (const dep of this.deployments) newLaunches += await this.indexLaunches(dep, head, start);
+    // The tail must never pass a block whose launches are not indexed yet: a token launched there
+    // would be marked covered while its early events were skipped. Clamp to the slowest launch cursor.
+    let launchesThrough = head;
+    for (const dep of this.deployments) {
+      const c = await getCursor(this.db, this.keys().launches(dep.id));
+      if (c !== null && c < launchesThrough) launchesThrough = c;
+    }
+    if (this.opts.shouldStop?.()) {
+      const through = (await getCursor(this.db, this.keys().activity)) ?? start - 1n;
+      return { head, activityThrough: through, newLaunches, newEvents: 0, backfilled: 0 };
+    }
     await this.loadCovered();
-    const { through, events } = await this.indexTail(head);
-    const backfilled = await this.processBackfillQueue(this.opts.backfillPerTick ?? 10);
+    const { through, events } = await this.indexTail(launchesThrough);
+    const backfilled = this.opts.shouldStop?.() ? 0 : await this.processBackfillQueue(this.opts.backfillPerTick ?? 10);
     return { head, activityThrough: through, newLaunches, newEvents: events, backfilled };
   }
 
