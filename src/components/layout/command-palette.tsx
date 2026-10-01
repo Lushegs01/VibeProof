@@ -124,7 +124,7 @@ export function CommandPalette() {
             role="dialog"
             aria-modal="true"
             aria-label="Search tokens, wallets and transactions"
-            className="w-full max-w-xl overflow-hidden rounded-md border border-line-strong bg-surface shadow-2xl"
+            className="w-full max-w-xl overflow-hidden rounded-[20px] border border-[#5cc6ea33] bg-surface shadow-[0_30px_80px_-20px_#0b65a366]"
             initial={{ opacity: 0, y: -6, scale: 0.99 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -4 }}
@@ -163,7 +163,7 @@ export function CommandPalette() {
             {!q.trim() ? (
               <div className="grid grid-cols-2 gap-2 px-4 py-4 text-xs text-fg-2 sm:grid-cols-4">
                 {["0x… token", "$SYMBOL", "0x… creator", "0x… tx hash"].map((h) => (
-                  <span key={h} className="rounded border border-line px-2 py-1.5 font-mono">
+                  <span key={h} className="rounded-full border border-line px-3 py-1.5 text-center font-mono">
                     {h}
                   </span>
                 ))}
@@ -176,21 +176,27 @@ export function CommandPalette() {
   );
 }
 
-export function SearchTrigger({ className, large = false }: { className?: string; large?: boolean }) {
+export function SearchTrigger({ className, large = false, compact = false }: { className?: string; large?: boolean; compact?: boolean }) {
+  if (compact)
+    return (
+      <button type="button" onClick={() => window.dispatchEvent(new Event("vp:open-search"))} aria-label="Search token, wallet or transaction" className={cn("flex size-10 items-center justify-center rounded-full border border-line-strong text-fg-2 transition-colors hover:text-fg", className)}>
+        <Search className="size-4" />
+      </button>
+    );
   return (
     <button
       type="button"
       onClick={() => window.dispatchEvent(new Event("vp:open-search"))}
       className={cn(
-        "group flex items-center gap-3 rounded-md border border-line bg-surface text-left text-fg-2 transition-colors hover:border-line-strong hover:text-fg",
-        large ? "h-14 w-full px-5 text-[15px]" : "h-9 px-3 text-sm",
+        "group flex items-center gap-3 rounded-full border text-left text-fg-2 transition-colors hover:text-fg",
+        large ? "h-14 w-full border-[#5cc6ea40] bg-[#050e17cc] px-6 text-[15px] shadow-[0_0_40px_-12px_#2fb3e866] hover:border-[#5cc6ea80]" : "h-10 border-line-strong bg-surface/60 px-4 text-sm hover:border-[#2a6787]",
         className,
       )}
       aria-label="Search token, wallet or transaction"
     >
-      <Search className={large ? "size-4.5" : "size-3.5"} />
-      <span className="flex-1 truncate">{large ? "Search token, wallet or transaction" : "Search"}</span>
-      <kbd className="hidden rounded border border-line px-1.5 py-0.5 font-mono text-[10px] sm:inline">⌘K</kbd>
+      <Search className={large ? "size-4.5 text-accent" : "size-3.5"} />
+      <span className="flex-1 truncate">{large ? "Search a token, wallet or transaction" : "Search"}</span>
+      <kbd className="hidden rounded-full border border-line-strong px-2 py-0.5 font-mono text-[10px] sm:inline">⌘K</kbd>
     </button>
   );
 }

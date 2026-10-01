@@ -35,7 +35,7 @@ export function LiveFeed({ initial }: { initial: FeedItem[] }) {
           {paused ? "Resume" : "Pause"}
         </button>
       </div>
-      <ol className="rounded-md border border-line" aria-live="polite">
+      <ol className="rounded-[20px] border border-line bg-surface/50" aria-live="polite">
         <AnimatePresence initial={false}>
           {items.map((f) => (
             <motion.li key={f.id} layout initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} className="grid grid-cols-[64px_1fr] gap-x-4 border-b border-line/70 px-4 py-3 last:border-b-0 sm:grid-cols-[64px_110px_1fr_auto]">

@@ -43,7 +43,7 @@ export default async function CreatorPage({ params }: Props) {
         <div className="mt-4 flex items-center gap-3">
           <Address value={creator.address} short={false} className="text-base md:text-xl" />
         </div>
-        <dl className="mt-8 grid grid-cols-2 gap-px overflow-hidden rounded-md border border-line bg-line sm:grid-cols-5">
+        <dl className="mt-8 grid grid-cols-2 gap-px overflow-hidden rounded-[20px] border border-[#5cc6ea2e] bg-[#5cc6ea1f] sm:grid-cols-5">
           {[
             ["First observed", creator.firstSeenAt ? timeAgo(creator.firstSeenAt) : "—", creator.firstSeenAt ? formatUtc(creator.firstSeenAt) : ""],
             ["Launches", formatInt(creator.launchCount), creator.definitions.launches],
@@ -63,7 +63,7 @@ export default async function CreatorPage({ params }: Props) {
       </header>
 
       <Section title="Observed history" kicker="chronological, newest first">
-        <div className="overflow-x-auto rounded-md border border-line">
+        <div className="overflow-x-auto rounded-[20px] border border-line bg-surface/50">
           <table className="w-full min-w-[680px] text-sm">
             <caption className="sr-only">Launches by this creator</caption>
             <thead>

@@ -13,7 +13,7 @@ export default function Methodology() {
   return (
     <div className="mx-auto max-w-3xl px-4 pt-10 md:px-6 md:pt-14">
       <p className="label">Methodology</p>
-      <h1 className="mt-3 text-3xl font-semibold tracking-tight">How VibeProof knows what it shows</h1>
+      <h1 className="text-gradient mt-3 text-4xl font-medium leading-tight md:text-5xl">How VibeProof knows what it shows</h1>
       <div className="mt-10 space-y-12 text-[15px] leading-relaxed text-fg-2">
         <section>
           <h2 className="mb-4 text-lg font-medium text-fg">Verification states</h2>

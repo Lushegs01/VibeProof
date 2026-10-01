@@ -38,14 +38,14 @@ export function WatchlistView() {
     setItems(next);
   };
 
-  if (!items.length) return <p className="mt-10 rounded-md border border-line p-6 text-sm text-fg-2">Nothing watched yet. Open any Launch Passport and choose “Watch”.</p>;
+  if (!items.length) return <p className="mt-10 rounded-[20px] border border-line bg-surface/50 p-6 text-sm text-fg-2">Nothing watched yet. Open any Launch Passport and choose “Watch”.</p>;
   return (
     <ul className="mt-8 grid gap-3 sm:grid-cols-2">
       {items.map((w) => {
         const l = live[w.address];
         const delta = l?.holders !== null && l?.holders !== undefined && w.lastHolders !== null ? l.holders - w.lastHolders : null;
         return (
-          <li key={w.address} className="rounded-md border border-line bg-surface p-4">
+          <li key={w.address} className="rounded-[20px] border border-line bg-surface/50 bg-surface p-4">
             <div className="flex items-start justify-between gap-2">
               <Link href={`/token/robinhood-testnet/${w.address}`} onClick={() => markChecked(w.address)} className="text-lg font-medium hover:underline">
                 {w.symbol ? `$${w.symbol}` : shortAddress(w.address)}

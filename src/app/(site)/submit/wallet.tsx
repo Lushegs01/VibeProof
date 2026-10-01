@@ -75,7 +75,7 @@ export function WalletPicker() {
             type="button"
             onClick={() => connect({ connector })}
             disabled={isPending}
-            className="inline-flex items-center gap-2 rounded-md border border-line px-4 py-2 text-sm transition-colors hover:border-line-strong disabled:opacity-50"
+            className="btn btn-outline h-10 px-5 text-sm"
             title={hint}
           >
             {pendingId === connector.id ? (
@@ -98,7 +98,7 @@ export function WalletPicker() {
         </p>
       ) : null}
       {env && !env.injected && !announced.length ? (
-        <div className="rounded-md border border-line bg-surface p-3 text-xs leading-relaxed text-fg-2">
+        <div className="rounded-[20px] border border-line bg-surface/50 bg-surface p-3 text-xs leading-relaxed text-fg-2">
           <p>No wallet extension was detected in this browser. You can:</p>
           <ul className="mt-1.5 list-disc space-y-1 pl-4">
             {env.mobile ? (

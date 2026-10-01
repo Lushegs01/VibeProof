@@ -255,7 +255,7 @@ export async function getActivitySeries(address: Address, days = 7): Promise<Ser
     )
     select g.bucket, coalesce(e.transfers, 0) as transfers, coalesce(e.buys, 0) as buys, coalesce(e.sells, 0) as sells
     from generate_series(
-      date_trunc('hour', greatest(now() - make_interval(days => ${days}), coalesce(${tok.createdAt}::timestamptz, now() - make_interval(days => ${days})))),
+      date_trunc('hour', greatest(now() - make_interval(days => ${days}), coalesce(${tok.createdAt?.toISOString() ?? null}::timestamptz, now() - make_interval(days => ${days})))),
       date_trunc('hour', now()), interval '1 hour') as g(bucket)
     left join e on e.bucket = g.bucket
     order by 1`);
