@@ -14,8 +14,10 @@ const mem = (g.__vpMem ??= new Map());
 
 export function getRedis(): Redis | null {
   if (g.__vpRedis !== undefined) return g.__vpRedis;
-  if (!process.env.REDIS_URL) return (g.__vpRedis = null);
-  const r = new Redis(process.env.REDIS_URL, { lazyConnect: false, maxRetriesPerRequest: 1, enableOfflineQueue: false });
+  // REDIS_URL, or KV_URL as injected by Vercel's Upstash/KV integration (rediss:// works with ioredis).
+  const url = process.env.REDIS_URL || process.env.KV_URL;
+  if (!url) return (g.__vpRedis = null);
+  const r = new Redis(url, { lazyConnect: false, maxRetriesPerRequest: 1, enableOfflineQueue: false });
   r.on("error", (e) => log("warn", "redis.error", { error: e.message }));
   return (g.__vpRedis = r);
 }

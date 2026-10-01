@@ -6,7 +6,9 @@ const csp = [
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https:",
   "font-src 'self' data:",
-  "connect-src 'self' https://rpc.testnet.chain.robinhood.com wss://*.robinhood.com https://*.alchemy.com wss://*.alchemy.com",
+  // RPC providers + wallet relays (MetaMask mobile connector, WalletConnect/Reown when configured).
+  "connect-src 'self' https://rpc.testnet.chain.robinhood.com wss://*.robinhood.com https://*.alchemy.com wss://*.alchemy.com https://*.metamask.io wss://*.metamask.io https://*.walletconnect.com wss://*.walletconnect.com https://*.walletconnect.org wss://*.walletconnect.org https://*.reown.com wss://*.reown.com",
+  "frame-src 'self' https://verify.walletconnect.com https://verify.walletconnect.org",
   "frame-ancestors 'none'",
   "base-uri 'self'",
   "form-action 'self'",

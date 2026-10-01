@@ -22,10 +22,13 @@
     "forge:build": "forge build",
     "forge:test": "forge test -vv",
     "deploy:testnet": "forge script script/DeployVibeProofRegistry.s.sol:DeployVibeProofRegistry --rpc-url robinhood_testnet --broadcast --account ${DEPLOYER_ACCOUNT:-vibeproof-deployer}",
-    "verify:testnet": "forge verify-contract --chain-id 46630 --verifier blockscout --verifier-url https://explorer.testnet.chain.robinhood.com/api/ ${REGISTRY_ADDRESS} contracts/VibeProofRegistry.sol:VibeProofRegistry"
+    "verify:testnet": "forge verify-contract --chain-id 46630 --verifier blockscout --verifier-url https://explorer.testnet.chain.robinhood.com/api/ ${REGISTRY_ADDRESS} contracts/VibeProofRegistry.sol:VibeProofRegistry",
+    "vercel-build": "tsx src/lib/db/migrate.ts --if-configured && next build"
   },
   "dependencies": {
+    "@metamask/connect-evm": "^2.1.1",
     "@tanstack/react-query": "^5.104.0",
+    "@walletconnect/ethereum-provider": "^2.25.0",
     "clsx": "^2.1.1",
     "drizzle-orm": "^0.45.3",
     "framer-motion": "^13.4.6",
