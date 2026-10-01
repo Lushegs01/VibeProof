@@ -128,7 +128,7 @@ function Flow({ initialToken, registry }: { initialToken: string; registry: stri
 
   if (result)
     return (
-      <div className="mt-10 rounded-md border border-line bg-surface p-6">
+      <div className="mt-10 rounded-[20px] border border-line bg-surface/50 bg-surface p-6">
         <h2 className="text-xl font-medium">Your Project Passport</h2>
         <ul className="mt-6 divide-y divide-line/70">
           <li className="flex items-center justify-between py-3">
@@ -150,11 +150,11 @@ function Flow({ initialToken, registry }: { initialToken: string; registry: stri
         <p className="mt-6 text-sm text-fg-2">Your submission is now observable through VibeProof. Checks are re-run periodically; nothing here is a certification.</p>
         <p className="mt-2 break-all font-mono text-xs text-muted">metadata hash {result.metadataHash}</p>
         <div className="mt-6 flex flex-wrap gap-3">
-          <Link href={`/token/robinhood-testnet/${token.trim()}`} className="rounded-md border border-accent/30 bg-accent-dim px-4 py-2 text-sm text-accent">
+          <Link href={`/token/robinhood-testnet/${token.trim()}`} className="btn btn-primary h-10 px-5 text-sm">
             View Launch Passport
           </Link>
           {registry && !anchorTx ? (
-            <button type="button" onClick={anchor} disabled={busy === "anchor"} className="inline-flex items-center gap-2 rounded-md border border-line px-4 py-2 text-sm hover:border-line-strong">
+            <button type="button" onClick={anchor} disabled={busy === "anchor"} className="btn btn-outline h-10 px-5 text-sm">
               {busy === "anchor" ? <Loader2 className="size-4 animate-spin" /> : null} Anchor hash onchain (optional)
             </button>
           ) : null}
@@ -183,7 +183,7 @@ function Flow({ initialToken, registry }: { initialToken: string; registry: stri
           {signedIn ? (
             <p className="text-sm text-fg-2">Signed in. No transaction was sent.</p>
           ) : (
-            <button type="button" onClick={signIn} disabled={!isConnected || busy === "signin"} className="inline-flex items-center gap-2 rounded-md border border-line px-4 py-2 text-sm hover:border-line-strong disabled:opacity-40">
+            <button type="button" onClick={signIn} disabled={!isConnected || busy === "signin"} className="btn btn-outline h-10 px-5 text-sm">
               {busy === "signin" ? <Loader2 className="size-4 animate-spin" /> : null} Sign message
             </button>
           )}
@@ -216,7 +216,7 @@ function Flow({ initialToken, registry }: { initialToken: string; registry: stri
             {error}
           </p>
         ) : null}
-        <button type="submit" disabled={!signedIn || busy === "submit"} className="inline-flex h-11 items-center gap-2 rounded-md bg-fg px-5 text-sm font-medium text-bg transition-opacity hover:opacity-90 disabled:opacity-30">
+        <button type="submit" disabled={!signedIn || busy === "submit"} className="btn btn-primary h-12 px-7 text-[15px]">
           {busy === "submit" ? <Loader2 className="size-4 animate-spin" /> : null} Generate passport
         </button>
       </form>

@@ -35,7 +35,7 @@ export function WatchButton({ address, symbol, holders }: { address: string; sym
     setWatching(!watching);
   };
   return (
-    <button type="button" onClick={toggle} aria-pressed={watching} className="inline-flex h-9 items-center gap-2 rounded-md border border-line px-3 text-sm text-fg-2 transition-colors hover:border-line-strong hover:text-fg">
+    <button type="button" onClick={toggle} aria-pressed={watching} className="btn btn-outline h-10 px-5 text-sm">
       {watching ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
       {watching ? "Watching" : "Watch"}
     </button>
@@ -61,7 +61,7 @@ export function ShareButton({ address }: { address: string }) {
     }
   };
   return (
-    <button type="button" onClick={share} disabled={state === "busy"} className="inline-flex h-9 items-center gap-2 rounded-md border border-accent/30 bg-accent-dim px-3 text-sm text-accent transition-colors hover:border-accent/60">
+    <button type="button" onClick={share} disabled={state === "busy"} className="btn btn-primary h-10 px-5 text-sm">
       {state === "busy" ? <Loader2 className="size-4 animate-spin" /> : state === "done" ? <Check className="size-4" /> : <Share2 className="size-4" />}
       <span aria-live="polite">{state === "done" ? "Link copied" : state === "error" ? "Could not share" : "Share passport"}</span>
     </button>
@@ -126,7 +126,7 @@ export function WhatChanged({ address }: { address: string }) {
         {data.baselineAt ? (data.baselineExact ? `Baseline snapshot ${timeAgo(data.baselineAt)}.` : `Earliest available snapshot is ${timeAgo(data.baselineAt)}; baseline is approximate.`) : "No earlier snapshot exists yet."}
       </p>
       {data.diffs.length ? (
-        <ul className="grid grid-cols-2 gap-px overflow-hidden rounded-md border border-line bg-line sm:grid-cols-4">
+        <ul className="grid grid-cols-2 gap-px overflow-hidden rounded-[20px] border border-[#5cc6ea2e] bg-[#5cc6ea1f] sm:grid-cols-4">
           {data.diffs.map((d) => (
             <li key={d.metric} className="bg-surface px-4 py-3">
               <div className={`font-mono text-lg tabular ${d.delta > 0 ? "text-fg" : "text-fg-2"}`}>{d.metric === "volume" ? `${d.delta >= 0 ? "+" : "−"}${Math.abs(d.delta).toFixed(4)}` : signed(d.delta)}</div>

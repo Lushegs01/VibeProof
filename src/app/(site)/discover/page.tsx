@@ -21,12 +21,12 @@ export default async function DiscoverPage({ searchParams }: Props) {
   return (
     <div className="mx-auto max-w-6xl px-4 pt-10 md:px-6 md:pt-14">
       <p className="label">Discover</p>
-      <h1 className="mt-3 text-3xl font-semibold tracking-tight md:text-4xl">vibe/vibe launches</h1>
+      <h1 className="text-gradient mt-3 text-4xl font-medium leading-tight md:text-5xl">vibe/vibe launches</h1>
       <p className="mt-3 max-w-xl text-fg-2">Transparent sorting only. There is no “best token” ranking and no recommendation.</p>
 
       <nav aria-label="Category" className="mt-8 flex flex-wrap gap-2">
         {Object.entries(CATEGORIES).map(([k, label]) => (
-          <Link key={k} href={href(sort, k)} aria-current={k === category ? "page" : undefined} className={cn("rounded-md border px-3 py-1.5 text-sm transition-colors", k === category ? "border-fg/40 bg-surface-3 text-fg" : "border-line text-fg-2 hover:text-fg")}>
+          <Link key={k} href={href(sort, k)} aria-current={k === category ? "page" : undefined} className={cn("rounded-full border px-4 py-2 text-sm transition-colors", k === category ? "border-accent/60 bg-accent-dim text-fg" : "border-line-strong text-fg-2 hover:text-fg")}>
             {label}
           </Link>
         ))}
@@ -43,7 +43,7 @@ export default async function DiscoverPage({ searchParams }: Props) {
         <span className="text-fg-2">How this is sorted:</span> {SORTS[sort].explain}
       </p>
 
-      <div className="mt-6 overflow-x-auto rounded-md border border-line">
+      <div className="mt-6 overflow-x-auto rounded-[20px] border border-line bg-surface/50">
         <table className="w-full min-w-[760px] text-sm">
           <caption className="sr-only">Launches sorted by {SORTS[sort].label}</caption>
           <thead>

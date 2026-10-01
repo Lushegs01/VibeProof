@@ -26,6 +26,8 @@
     "vercel-build": "tsx src/lib/db/migrate.ts --if-configured && next build"
   },
   "dependencies": {
+    "@fontsource-variable/plus-jakarta-sans": "^5.3.0",
+    "@fontsource-variable/unbounded": "^5.3.0",
     "@metamask/connect-evm": "^2.1.1",
     "@tanstack/react-query": "^5.104.0",
     "@walletconnect/ethereum-provider": "^2.25.0",

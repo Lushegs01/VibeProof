@@ -180,6 +180,15 @@ describe.runIf(process.env.SKIP_DB_TESTS !== "1")("indexer → Postgres", () => 
     expect(section.score).toEqual({ observed: 2, total: 3 });
   });
 
+  it("builds a zero-filled hourly activity series for a covered token", async () => {
+    if (!reachable) return;
+    // Regression: a Date bound into the raw SQL threw, silently hiding the passport chart.
+    const series = await mods.token.getActivitySeries(TOKEN_NEW, 7);
+    expect(series).not.toBeNull();
+    expect(series!.length).toBeGreaterThan(0);
+    for (const p of series!) expect(p.transfers + p.buys + p.sells).toBeGreaterThanOrEqual(0);
+  });
+
   it("stores snapshots for change detection", async () => {
     if (!reachable) return;
     const db = mods.getDb()!;

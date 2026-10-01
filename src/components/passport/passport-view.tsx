@@ -36,7 +36,7 @@ export function PassportView({ p, series, publicView = false }: { p: TokenPasspo
         </div>
         <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
           <div className="min-w-0">
-            <h1 className="truncate text-4xl font-semibold tracking-tight md:text-5xl">{symbol}</h1>
+            <h1 className="text-gradient truncate pb-1 text-4xl font-medium leading-tight md:text-6xl">{symbol}</h1>
             <p className="mt-2 truncate text-lg text-fg-2">{p.name ?? "Name not reported by contract"}</p>
             <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
               <span className="flex items-center gap-2">
@@ -55,14 +55,14 @@ export function PassportView({ p, series, publicView = false }: { p: TokenPasspo
               <ShareButton address={p.address} />
             </div>
           ) : (
-            <Link href={`/token/${p.chain}/${p.address}`} className="inline-flex h-9 items-center gap-2 rounded-md border border-line px-3 text-sm text-fg-2 hover:text-fg">
+            <Link href={`/token/${p.chain}/${p.address}`} className="btn btn-outline h-10 px-5 text-sm">
               Open full passport <ArrowUpRight className="size-4" />
             </Link>
           )}
         </div>
 
         {/* Dimension strip — deliberately NOT a single score */}
-        <dl className="mt-8 grid grid-cols-2 gap-px overflow-hidden rounded-md border border-line bg-line md:grid-cols-4">
+        <dl className="mt-8 grid grid-cols-2 gap-px overflow-hidden rounded-[20px] border border-[#5cc6ea2e] bg-[#5cc6ea1f] md:grid-cols-4">
           <Dim k="Contract" href="#contract" v={`${c.summary.total} checks`} sub={`${adminDetected} admin capabilit${adminDetected === 1 ? "y" : "ies"} detected`} />
           <Dim k="Creator" href="#creator" v={p.creator ? `${p.creator.launchCount} launch${p.creator.launchCount === 1 ? "" : "es"}` : "Unknown"} sub={p.creator ? `${p.creator.graduatedLaunchCount} graduated` : "Not an indexed launch"} />
           <Dim k="Product" href="#product" v={`${p.proof.score.observed}/${p.proof.score.total}`} sub="independently observed" />
@@ -128,7 +128,7 @@ export function PassportView({ p, series, publicView = false }: { p: TokenPasspo
             </dl>
           </div>
         </div>
-        <details className="group mt-6 rounded-md border border-line">
+        <details className="group mt-6 rounded-[20px] border border-line bg-surface/50">
           <summary className="flex cursor-pointer list-none items-center justify-between px-5 py-3 text-sm text-fg-2 hover:text-fg">
             <span>View technical details · {c.checks.length} checks</span>
             <span className="font-mono text-xs transition-transform group-open:rotate-45" aria-hidden>
@@ -288,7 +288,7 @@ export function PassportView({ p, series, publicView = false }: { p: TokenPasspo
           <div>
             <h3 className="label mb-3">Recent events</h3>
             {p.recent.length ? (
-              <div className="overflow-x-auto rounded-md border border-line">
+              <div className="overflow-x-auto rounded-[20px] border border-line bg-surface/50">
                 <table className="w-full min-w-[520px] text-sm">
                   <caption className="sr-only">Most recent indexed events</caption>
                   <thead>
@@ -326,7 +326,7 @@ export function PassportView({ p, series, publicView = false }: { p: TokenPasspo
           <div>
             <h3 className="label mb-3">Largest holders</h3>
             {p.topHolders?.length ? (
-              <ol className="rounded-md border border-line">
+              <ol className="rounded-[20px] border border-line bg-surface/50">
                 {p.topHolders.map((h, i) => (
                   <li key={h.wallet} className="flex items-center gap-3 border-b border-line/70 px-4 py-2 last:border-b-0">
                     <span className="w-4 font-mono text-xs text-muted">{i + 1}</span>
@@ -349,7 +349,7 @@ export function PassportView({ p, series, publicView = false }: { p: TokenPasspo
 
       {/* ── STATEMENT LEDGER ───────────────────────────────────── */}
       <Section id="statements" title="Statement ledger" kicker="every claim, classified">
-        <ul className="divide-y divide-line/70 rounded-md border border-line">
+        <ul className="divide-y divide-line/70 rounded-[20px] border border-line bg-surface/50">
           {statements.map((s, i) => (
             <li key={i} className="grid grid-cols-[120px_1fr] items-start gap-4 px-5 py-3 text-sm md:grid-cols-[140px_1fr_200px]">
               <Pill tone={KIND_TONE[s.kind]} className="justify-self-start">
@@ -399,7 +399,7 @@ function Fact({ k, v }: { k: string; v: string | number | boolean | null | undef
 
 function Prov({ k, v }: { k: string; v: React.ReactNode }) {
   return (
-    <div className="rounded-md border border-line p-4">
+    <div className="rounded-[20px] border border-line bg-surface/50 p-4">
       <div className="label mb-2">{k}</div>
       <div className="text-fg">{v}</div>
     </div>

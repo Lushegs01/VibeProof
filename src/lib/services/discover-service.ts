@@ -117,3 +117,22 @@ export async function activityFeed(limit = 60): Promise<FeedItem[]> {
   });
   return value;
 }
+
+export type EcosystemStats = { launches: number; creators: number; covered: number; graduated: number; indexedThrough: string | null; demo: boolean };
+
+/** Real counts for the landing page. null when there is no database (never fabricated). */
+export async function ecosystemStats(): Promise<EcosystemStats | null> {
+  if (isDemoMode()) return { launches: DEMO_TOKENS.length, creators: 2, covered: DEMO_TOKENS.length, graduated: DEMO_TOKENS.filter((t) => t.graduated).length, indexedThrough: "126600000", demo: true };
+  const db = getDb();
+  if (!db) return null;
+  const { value } = await cached("stats:v1", { ttl: 60, swr: 600 }, async () => {
+    const [r] = await db.execute<{ launches: string; creators: string; covered: string; graduated: string; cursor: string | null }>(sql`
+      select (select count(*) from launches where chain_id = ${CHAIN_ID}) as launches,
+             (select count(*) from creators where chain_id = ${CHAIN_ID}) as creators,
+             (select count(*) from tokens where chain_id = ${CHAIN_ID} and activity_covered) as covered,
+             (select count(*) from launches where chain_id = ${CHAIN_ID} and status = 'graduated') as graduated,
+             (select last_block::text from indexer_state where key = ${`activity:${CHAIN_ID}`}) as cursor`);
+    return { launches: Number(r.launches), creators: Number(r.creators), covered: Number(r.covered), graduated: Number(r.graduated), indexedThrough: r.cursor, demo: false };
+  });
+  return value;
+}

@@ -37,7 +37,7 @@ export function EvidenceButton({ metric, value, evidence, note, children }: { me
         aria-labelledby={titleId}
         onClose={() => setOpen(false)}
         onClick={(e) => e.target === ref.current && setOpen(false)}
-        className="m-auto w-[min(520px,calc(100vw-32px))] font-sans normal-case tracking-normal rounded-md border border-line-strong bg-surface p-0 text-fg shadow-2xl backdrop:bg-black/70 backdrop:backdrop-blur-[2px] open:animate-[fadeIn_.16s_ease-out]"
+        className="m-auto w-[min(520px,calc(100vw-32px))] font-sans normal-case tracking-normal rounded-[20px] border border-[#5cc6ea33] bg-surface p-0 text-fg shadow-2xl backdrop:bg-black/70 backdrop:backdrop-blur-[2px] open:animate-[fadeIn_.16s_ease-out]"
       >
         <div className="flex items-center justify-between border-b border-line px-5 py-3.5">
           <h2 id={titleId} className="label !text-fg">
