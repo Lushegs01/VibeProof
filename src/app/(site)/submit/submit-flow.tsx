@@ -3,22 +3,21 @@
 import { useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { WagmiProvider, createConfig, http, useAccount, useConnect, useDisconnect, useSignMessage, useSwitchChain, useWriteContract, usePublicClient } from "wagmi";
-import { injected } from "wagmi/connectors";
+import { WagmiProvider, useAccount, useDisconnect, useSignMessage, useSwitchChain, useWriteContract, usePublicClient } from "wagmi";
 import { createSiweMessage } from "viem/siwe";
-import { Check, Loader2, Wallet } from "lucide-react";
+import { Check, Loader2 } from "lucide-react";
+import { WalletPicker, wagmiConfig, walletErrorMessage } from "./wallet";
 import { robinhoodTestnet } from "@/lib/chain/chains";
 import { REGISTRY_ABI } from "@/lib/registry/abi";
 import { shortAddress } from "@/lib/util/address";
 import { StateBadge } from "@/components/ui/state-badge";
 import type { UrlCheckResult } from "@/lib/proof/checks";
 
-const config = createConfig({ chains: [robinhoodTestnet], connectors: [injected()], transports: { [robinhoodTestnet.id]: http() }, ssr: true });
 const qc = new QueryClient();
 
 export function SubmitFlow(props: { initialToken: string; registry: string | null }) {
   return (
-    <WagmiProvider config={config}>
+    <WagmiProvider config={wagmiConfig}>
       <QueryClientProvider client={qc}>
         <Flow {...props} />
       </QueryClientProvider>
@@ -39,7 +38,6 @@ type Result = { metadataHash: `0x${string}`; basis: string; checks: UrlCheckResu
 
 function Flow({ initialToken, registry }: { initialToken: string; registry: string | null }) {
   const { address, isConnected, chainId } = useAccount();
-  const { connect, isPending: connecting, error: connectError } = useConnect();
   const { disconnect } = useDisconnect();
   const { switchChainAsync } = useSwitchChain();
   const { signMessageAsync } = useSignMessage();
@@ -86,7 +84,7 @@ function Flow({ initialToken, registry }: { initialToken: string; registry: stri
       if (!r.ok) throw new Error(j.error?.message ?? "Sign-in failed");
       setSession(j.data.address);
     } catch (e) {
-      setError((e as Error).message.split("\n")[0]);
+      setError(walletErrorMessage(e));
     } finally {
       setBusy(null);
     }
@@ -122,7 +120,7 @@ function Flow({ initialToken, registry }: { initialToken: string; registry: stri
       if (!r.ok) throw new Error((await r.json()).error?.message ?? "Anchor verification failed");
       setAnchorTx(hash);
     } catch (e) {
-      setError((e as Error).message.split("\n")[0]);
+      setError(walletErrorMessage(e));
     } finally {
       setBusy(null);
     }
@@ -178,11 +176,8 @@ function Flow({ initialToken, registry }: { initialToken: string; registry: stri
               </button>
             </div>
           ) : (
-            <button type="button" onClick={() => connect({ connector: injected() })} disabled={connecting} className="inline-flex items-center gap-2 rounded-md border border-line px-4 py-2 text-sm hover:border-line-strong">
-              {connecting ? <Loader2 className="size-4 animate-spin" /> : <Wallet className="size-4" />} Connect browser wallet
-            </button>
+            <WalletPicker />
           )}
-          {connectError ? <p className="mt-2 text-sm text-attention">{connectError.message.split("\n")[0]}</p> : null}
         </Step>
         <Step n={2} title="Sign in with Ethereum" done={signedIn}>
           {signedIn ? (
