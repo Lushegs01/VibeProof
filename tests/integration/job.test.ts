@@ -47,8 +47,8 @@ describe.runIf(process.env.SKIP_DB_TESTS !== "1")("serverless indexer job", () =
     const db = m.getDb()!;
     const p = new FakeProvider();
     const deps = [
-      { ...m.VIBE_DEPLOYMENTS[0], id: "a", factory: F1 as Address, deployBlock: 1n },
-      { ...m.VIBE_DEPLOYMENTS[0], id: "b", factory: F2 as Address, deployBlock: 1n },
+      { ...m.VIBE_DEPLOYMENTS[0], id: "a", factory: F1 as Address, startBlock: 1n },
+      { ...m.VIBE_DEPLOYMENTS[0], id: "b", factory: F2 as Address, startBlock: 1n },
     ];
     // Launch on the lagging factory at block 900, with a transfer at 950.
     p.push(F2, m.VIBE_EVENTS.LaunchCreated, { launchId: 1n, launcher: CREATOR, token: TOKEN }, { curve: CURVE, name: "B", symbol: "B", metadataURI: "", pairCurrency: "0x0000000000000000000000000000000000000000", taxBps: 0, packedWeights: 0n, projectTreasury: CREATOR, targetPairUnits: 0n, netPersonal: 0n, giftNetTotal: 0n, giftRoot: `0x${"0".repeat(64)}`, giftCount: 0n }, 900n);
@@ -62,12 +62,12 @@ describe.runIf(process.env.SKIP_DB_TESTS !== "1")("serverless indexer job", () =
     ]);
     // First shouldStop() check happens in deployment b's launch loop → b stays at 500 this tick.
     let calls = 0;
-    const idx = new m.VibeIndexer(p as never, db, { shouldStop: () => ++calls === 1, snapshotEveryMs: 0 }, deps);
+    const idx = new m.VibeIndexer(p as never, db, { shouldStop: () => ++calls === 1, snapshotEveryMs: 0, confirmations: 0n, metadata: false, analyzePerTick: 0 }, deps);
     const r = await idx.tick();
     expect(r.activityThrough).toBe(500n);
 
     // Next tick catches launches up; the token is covered and its transfer is not lost.
-    const idx2 = new m.VibeIndexer(p as never, db, { snapshotEveryMs: 0 }, deps);
+    const idx2 = new m.VibeIndexer(p as never, db, { snapshotEveryMs: 0, confirmations: 0n, metadata: false, analyzePerTick: 0 }, deps);
     const r2 = await idx2.tick();
     expect(r2.activityThrough).toBe(1000n);
     const [t] = await db.select().from(m.schema.tokens).where(m.drizzle.eq(m.schema.tokens.address, TOKEN.toLowerCase()));

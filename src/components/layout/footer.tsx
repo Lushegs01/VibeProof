@@ -1,6 +1,9 @@
 import Link from "next/link";
 import { ArrowUpRight } from "lucide-react";
 import { Wordmark } from "./logo";
+import { activeNetwork } from "@/lib/chain/networks";
+
+const NET = activeNetwork();
 
 const COLS = [
   {
@@ -17,7 +20,7 @@ const COLS = [
     links: [
       { href: "/methodology", label: "Methodology" },
       { href: "/api/health", label: "System status" },
-      { href: "https://explorer.testnet.chain.robinhood.com", label: "Chain explorer" },
+      { href: NET.explorerUrl, label: "Chain explorer" },
       { href: "https://github.com/Lushegs01/VibeProof", label: "Source code" },
     ],
   },
@@ -62,7 +65,7 @@ export function Footer() {
       <div className="mx-auto max-w-6xl px-4 md:px-6">
         <div className="hairline" />
         <div className="flex flex-col gap-3 py-6 text-xs text-muted sm:flex-row sm:items-center sm:justify-between">
-          <span>© 2026 VibeProof · Robinhood Chain Testnet (46630). Testnet assets have no value.</span>
+          <span>© 2026 VibeProof · {NET.name} ({NET.chainId}).{NET.testnet ? " Testnet assets have no value." : ""}</span>
           <a href="/api/health" className="flex items-center gap-2 transition-colors hover:text-fg-2">
             <span className="size-1.5 rounded-full bg-accent" aria-hidden />
             Indexer status

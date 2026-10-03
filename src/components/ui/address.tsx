@@ -5,10 +5,10 @@ import { useState } from "react";
 import Link from "next/link";
 import { shortAddress } from "@/lib/util/address";
 import { cn } from "@/lib/util/cn";
+import { activeNetwork, getNetwork } from "@/lib/chain/networks";
 
-const EXPLORER = "https://explorer.testnet.chain.robinhood.com";
-
-export function Address({ value, href, explorer = "address", short = true, className }: { value: string; href?: string; explorer?: "address" | "tx" | "token" | false; short?: boolean; className?: string }) {
+export function Address({ value, href, explorer = "address", short = true, className, chain }: { value: string; href?: string; explorer?: "address" | "tx" | "token" | false; short?: boolean; className?: string; chain?: string }) {
+  const EXPLORER = (getNetwork(chain) ?? activeNetwork()).explorerUrl;
   const [copied, setCopied] = useState(false);
   const text = short ? shortAddress(value, value.length > 50 ? 6 : 4, value.length > 50 ? 6 : 4) : value;
   const copy = async () => {

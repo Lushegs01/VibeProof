@@ -3,7 +3,7 @@ import { checkGithub, checkWebsite, socialClaim } from "@/lib/proof/checks";
 import { SafeFetchError } from "@/lib/proof/safe-fetch";
 
 const TOKEN = "0xe794217880011f9cA6961340eD5c16EC9559Fea0";
-const res = (body: string, status = 200) => async () => ({ finalUrl: "https://x.xyz/", status, headers: {}, body, tls: { valid: true }, redirects: [], ms: 12 });
+const res = (body: string, status = 200) => async () => ({ finalUrl: "https://x.xyz/", status, headers: {}, body, bytes: Buffer.from(body), truncated: false, tls: { valid: true }, redirects: [], ms: 12 });
 
 describe("website check", () => {
   it("is 'observed' when reachable", async () => {

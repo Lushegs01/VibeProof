@@ -1,7 +1,8 @@
-import { getAddress, type Abi, type Address, type Hex } from "viem";
+import { getAddress, parseAbi, type Abi, type Address, type Hex } from "viem";
 import type { ChainProvider } from "../chain/provider";
+import { NETWORKS } from "../chain/networks";
 import { ERC20_ABI } from "../vibe/abis";
-import { blockscout, type BlockscoutSmartContract } from "../explorer/blockscout";
+import { blockscoutFor, type BlockscoutClient, type BlockscoutSmartContract } from "../explorer/blockscout";
 import type { Evidence, VerificationState } from "../verification/types";
 import { ZERO_ADDRESS } from "../util/address";
 import {
@@ -50,7 +51,11 @@ export type ContractAnalysis = {
   basics: TokenBasics;
   sourceVerified: boolean | null;
   contractName: string | null;
-  proxy: { kind: "eip1967" | "eip1167" | "beacon" | "explorer" | null; implementation: Address | null; admin: Address | null };
+  /**
+   * For a beacon proxy, `beacon` is the beacon contract and `implementation` is what the beacon's
+   * implementation() returned (never the beacon itself).
+   */
+  proxy: { kind: "eip1967" | "eip1167" | "beacon" | "explorer" | null; implementation: Address | null; admin: Address | null; beacon?: Address | null };
   owner: Address | null;
   ownershipRenounced: boolean | null;
   capabilities: Record<CapabilityId, string[]>;
@@ -58,18 +63,57 @@ export type ContractAnalysis = {
   summary: { total: number; detected: number; notDetected: number; unknown: number };
 };
 
-const slotToAddress = (v: Hex | undefined): Address | null => {
+const BEACON_ABI = parseAbi(["function implementation() view returns (address)"]);
+const ROLE_ABI = parseAbi(["function getRoleMemberCount(bytes32) view returns (uint256)", "function getRoleMember(bytes32,uint256) view returns (address)"]);
+const DEFAULT_ADMIN_ROLE = `0x${"0".repeat(64)}` as Hex;
+
+export const slotToAddress = (v: Hex | undefined): Address | null => {
   if (!v || /^0x0*$/.test(v)) return null;
   const a = getAddress("0x" + v.slice(-40));
   return a === ZERO_ADDRESS ? null : a;
 };
 
-export async function analyzeContract(provider: ChainProvider, address: Address): Promise<ContractAnalysis> {
+/**
+ * Resolve EIP-1167 / EIP-1967 / beacon proxies. For a beacon proxy the flow is
+ * proxy → beacon slot → beacon contract → implementation() → implementation; the beacon
+ * address itself is never reported as the implementation.
+ */
+export async function resolveProxy(provider: Pick<ChainProvider, "getStorageAt" | "readContract">, address: Address, code: Hex, explorerContract?: BlockscoutSmartContract | null): Promise<ContractAnalysis["proxy"] & { note?: string }> {
+  const minimal = detectMinimalProxy(code);
+  if (minimal) return { kind: "eip1167", implementation: getAddress(minimal), admin: null, beacon: null };
+  const [implSlot, adminSlot, beaconSlot] = await Promise.all([
+    provider.getStorageAt(address, EIP1967.implementation),
+    provider.getStorageAt(address, EIP1967.admin),
+    provider.getStorageAt(address, EIP1967.beacon),
+  ]);
+  const admin = slotToAddress(adminSlot);
+  const impl = slotToAddress(implSlot);
+  if (impl) return { kind: "eip1967", implementation: impl, admin, beacon: null };
+  const beacon = slotToAddress(beaconSlot);
+  if (beacon) {
+    try {
+      const resolved = await provider.readContract<Address>({ address: beacon, abi: BEACON_ABI as Abi, functionName: "implementation" });
+      const implementation = resolved && resolved !== ZERO_ADDRESS ? getAddress(resolved) : null;
+      return { kind: "beacon", implementation, admin, beacon, note: implementation ? `Beacon ${beacon} → implementation ${implementation}` : `Beacon ${beacon} returned no implementation` };
+    } catch {
+      return { kind: "beacon", implementation: null, admin, beacon, note: `Beacon ${beacon}: implementation() could not be read` };
+    }
+  }
+  if (explorerContract?.proxy_type && explorerContract.implementations?.length) {
+    const i = explorerContract.implementations[0];
+    const a = i.address_hash ?? i.address;
+    return { kind: "explorer", implementation: a ? getAddress(a) : null, admin, beacon: null };
+  }
+  return { kind: null, implementation: null, admin, beacon: null };
+}
+
+export async function analyzeContract(provider: ChainProvider, address: Address, explorer: BlockscoutClient = blockscoutFor(provider.slug)): Promise<ContractAnalysis> {
   const observedAt = new Date().toISOString();
+  const net = NETWORKS[provider.slug];
   const blockNumber = await provider.getBlockNumber();
   const block = blockNumber.toString();
   const rpcEv = (method: string, detail?: string): Evidence => ({
-    source: "Robinhood Chain Testnet RPC",
+    source: `${net.name} RPC`,
     method,
     observedAt,
     block,
@@ -82,8 +126,8 @@ export async function analyzeContract(provider: ChainProvider, address: Address)
 
   // Explorer is best-effort: failure means "unknown", never "not verified".
   const [explorerContract, explorerAddress] = await Promise.all([
-    exists ? blockscout.smartContract(address) : Promise.resolve(null),
-    exists ? blockscout.address(address) : Promise.resolve(null),
+    exists ? explorer.smartContract(address) : Promise.resolve(null),
+    exists ? explorer.address(address) : Promise.resolve(null),
   ]);
 
   const checks: ContractCheck[] = [];
@@ -134,40 +178,26 @@ export async function analyzeContract(provider: ChainProvider, address: Address)
     value: sourceVerified ? explorerContract?.name ?? "Verified" : sourceVerified === false ? "Not verified" : null,
     state: sourceVerified === null ? "unavailable" : sourceVerified ? "verified" : "not_found",
     evidence: {
-      source: "Blockscout (Robinhood Chain Testnet explorer)",
+      source: `Blockscout (${net.name} explorer)`,
       method: "GET /api/v2/smart-contracts/{address}",
       observedAt,
       contract: address,
-      url: `https://explorer.testnet.chain.robinhood.com/address/${address}?tab=contract`,
+      url: `${net.explorerUrl}/address/${address}?tab=contract`,
       detail: explorerContract?.compiler_version ?? undefined,
     },
     note: sourceVerified === null ? "Explorer could not be reached." : undefined,
   });
 
   // ── Proxy detection ───────────────────────────────────────────────────────
-  const minimal = detectMinimalProxy(code!);
-  const [implSlot, adminSlot, beaconSlot] = await Promise.all([
-    provider.getStorageAt(address, EIP1967.implementation),
-    provider.getStorageAt(address, EIP1967.admin),
-    provider.getStorageAt(address, EIP1967.beacon),
-  ]);
-  let proxy: ContractAnalysis["proxy"] = { kind: null, implementation: null, admin: slotToAddress(adminSlot) };
-  if (minimal) proxy = { kind: "eip1167", implementation: getAddress(minimal), admin: null };
-  else if (slotToAddress(implSlot)) proxy = { ...proxy, kind: "eip1967", implementation: slotToAddress(implSlot) };
-  else if (slotToAddress(beaconSlot)) proxy = { ...proxy, kind: "beacon", implementation: slotToAddress(beaconSlot) };
-  else if (explorerContract?.proxy_type && explorerContract.implementations?.length) {
-    const impl = explorerContract.implementations[0];
-    const implAddr = impl.address_hash ?? impl.address;
-    proxy = { ...proxy, kind: "explorer", implementation: implAddr ? getAddress(implAddr) : null };
-  }
+  const { note: proxyNote, ...proxy } = await resolveProxy(provider, address, code!, explorerContract);
   checks.push({
     id: "proxy",
     label: "Proxy",
     status: proxy.kind ? "detected" : "not_detected",
     value: proxy.implementation,
-    state: proxy.kind ? "verified" : "observed",
-    evidence: rpcEv("eth_getStorageAt (EIP-1967 implementation/admin/beacon slots) + EIP-1167 bytecode pattern"),
-    note: proxy.kind ? `Pattern: ${proxy.kind}` : hasDelegatecall(code!) ? "No standard proxy slots set, but bytecode contains DELEGATECALL." : undefined,
+    state: proxy.kind ? (proxy.kind === "explorer" ? "observed" : "verified") : "observed",
+    evidence: rpcEv("eth_getStorageAt (EIP-1967 implementation/admin/beacon slots) + EIP-1167 bytecode pattern" + (proxy.kind === "beacon" ? " + beacon implementation()" : "")),
+    note: proxy.kind ? [`Pattern: ${proxy.kind}`, proxyNote, proxy.admin ? `Proxy admin ${proxy.admin} can change the implementation.` : null].filter(Boolean).join(". ") : hasDelegatecall(code!) ? "No standard proxy slots set, but bytecode contains DELEGATECALL." : undefined,
   });
 
   // ── Capability detection ──────────────────────────────────────────────────
@@ -223,6 +253,24 @@ export async function analyzeContract(provider: ChainProvider, address: Address)
     evidence: rpcEv("eth_call owner()"),
     note: ownershipRenounced ? "owner() returns the zero address (renounced)." : owner === null ? "No owner() function responded." : undefined,
   });
+
+  // ── Role-based access (AccessControlEnumerable, when implemented) ─────────
+  if (capabilities.roles.length) {
+    const roleRes = await provider
+      .multicall({ contracts: [{ address, abi: ROLE_ABI as Abi, functionName: "getRoleMemberCount", args: [DEFAULT_ADMIN_ROLE] }, { address, abi: ROLE_ABI as Abi, functionName: "getRoleMember", args: [DEFAULT_ADMIN_ROLE, 0n] }] })
+      .catch(() => null);
+    const count = roleRes?.[0]?.status === "success" ? (roleRes[0].result as bigint) : null;
+    const first = roleRes?.[1]?.status === "success" ? getAddress(roleRes[1].result as string) : null;
+    checks.push({
+      id: "role_admin",
+      label: "Default admin role",
+      status: count === null ? "unknown" : count > 0n ? "detected" : "not_detected",
+      value: count === null ? null : `${count.toString()} holder${count === 1n ? "" : "s"}${first ? ` (first: ${first})` : ""}`,
+      state: count === null ? "unavailable" : "verified",
+      evidence: rpcEv("eth_call getRoleMemberCount(DEFAULT_ADMIN_ROLE), getRoleMember(DEFAULT_ADMIN_ROLE, 0)"),
+      note: count === null ? "Role functions exist, but the contract is not AccessControlEnumerable, so role holders cannot be listed onchain." : undefined,
+    });
+  }
 
   if (typeof r.paused === "boolean") {
     checks.push({ id: "paused_state", label: "Currently paused", status: r.paused ? "detected" : "not_detected", value: String(r.paused), state: "verified", evidence: rpcEv("eth_call paused()") });

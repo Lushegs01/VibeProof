@@ -5,6 +5,7 @@ import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { Evidence } from "@/lib/verification/types";
 import { formatUtc } from "@/lib/util/format";
+import { activeNetwork, getNetwork } from "@/lib/chain/networks";
 
 /** "Why am I seeing this?" — the data provenance panel. Uses the native <dialog> for focus trapping and Esc handling. */
 export function EvidenceButton({ metric, value, evidence, note, children }: { metric: string; value: ReactNode; evidence: Evidence; note?: string; children?: ReactNode }) {
@@ -58,7 +59,7 @@ export function EvidenceButton({ metric, value, evidence, note, children }: { me
           <Item k="Source">{evidence.source}</Item>
           {evidence.block ? (
             <Item k="Block">
-              <a className="font-mono underline decoration-line-strong underline-offset-4" href={`https://explorer.testnet.chain.robinhood.com/block/${evidence.block}`} target="_blank" rel="noopener noreferrer">
+              <a className="font-mono underline decoration-line-strong underline-offset-4" href={`${(getNetwork(evidence.network) ?? activeNetwork()).explorerUrl}/block/${evidence.block}`} target="_blank" rel="noopener noreferrer">
                 #{Number(evidence.block).toLocaleString("en-US")}
               </a>
             </Item>

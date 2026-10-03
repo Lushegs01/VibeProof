@@ -1,22 +1,36 @@
 import { z } from "zod";
 import type { Address } from "viem";
-import { getChainConfig } from "../chain/chains";
+import { getChainConfig, activeNetworkSlug, type NetworkSlug } from "../chain/chains";
 import { withRetry } from "../util/retry";
 import { log, metrics } from "../util/log";
 
-/** Thin, validated client for the Blockscout v2 REST API. Every method returns null on failure (never fake data). */
+/**
+ * Thin, validated client for the Blockscout v2 REST API, one per network. Every method returns
+ * null on failure (never fake data). A non-JSON answer (e.g. a bot-challenge page, which the
+ * mainnet explorer served to our test environment on 2026-10-03) is treated as "unavailable";
+ * VibeProof never tries to get around such protections.
+ */
 
-const base = () => getChainConfig()!.explorerApiUrl.replace(/\/api\/?$/, "") + "/api/v2";
+const base = (slug: NetworkSlug) => getChainConfig(slug)!.explorerApiUrl.replace(/\/api\/?$/, "") + "/api/v2";
 
-async function get<T>(path: string, schema: z.ZodType<T>): Promise<T | null> {
+async function get<T>(slug: NetworkSlug, path: string, schema: z.ZodType<T>): Promise<T | null> {
   try {
     return await withRetry(
       async () => {
         metrics.inc("explorer.requests");
-        const res = await fetch(base() + path, { headers: { accept: "application/json" }, signal: AbortSignal.timeout(10_000) });
+        const res = await fetch(base(slug) + path, { headers: { accept: "application/json" }, signal: AbortSignal.timeout(10_000) });
         if (res.status === 404) return null;
         if (res.status === 429 || res.status >= 500) throw new Error(`explorer ${res.status}`);
-        if (!res.ok) return null;
+        if (!res.ok) {
+          metrics.inc("explorer.refused");
+          log("warn", "explorer.refused", { network: slug, path, status: res.status });
+          return null;
+        }
+        if (!/json/i.test(res.headers.get("content-type") ?? "")) {
+          metrics.inc("explorer.not_json");
+          log("warn", "explorer.not_json", { network: slug, path, contentType: res.headers.get("content-type") });
+          return null;
+        }
         const parsed = schema.safeParse(await res.json());
         if (!parsed.success) {
           log("warn", "explorer.schema_mismatch", { path, issues: parsed.error.issues.slice(0, 3) });
@@ -28,7 +42,7 @@ async function get<T>(path: string, schema: z.ZodType<T>): Promise<T | null> {
     );
   } catch (e) {
     metrics.inc("explorer.failures");
-    log("warn", "explorer.failure", { path, error: e instanceof Error ? e.message : String(e) });
+    log("warn", "explorer.failure", { network: slug, path, error: e instanceof Error ? e.message : String(e) });
     return null;
   }
 }
@@ -84,13 +98,23 @@ const TxSchema = z
   .object({ hash: z.string(), block_number: z.number().nullish(), block: z.number().nullish(), timestamp: z.string().nullish(), from: z.object({ hash: z.string() }).passthrough() })
   .passthrough();
 
-export const blockscout = {
-  smartContract: (a: Address) => get(`/smart-contracts/${a}`, SmartContractSchema),
-  address: (a: Address) => get(`/addresses/${a}`, AddressSchema),
-  token: (a: Address) => get(`/tokens/${a}`, TokenSchema),
-  tokenCounters: (a: Address) => get(`/tokens/${a}/counters`, z.object({ token_holders_count: z.string().nullish(), transfers_count: z.string().nullish() }).passthrough()),
-  addressCounters: (a: Address) => get(`/addresses/${a}/counters`, CountersSchema),
-  transaction: (h: string) => get(`/transactions/${h}`, TxSchema),
-};
+const TokenCountersSchema = z.object({ token_holders_count: z.string().nullish(), transfers_count: z.string().nullish() }).passthrough();
+
+export function blockscoutFor(slug: NetworkSlug) {
+  return {
+    smartContract: (a: Address) => get(slug, `/smart-contracts/${a}`, SmartContractSchema),
+    address: (a: Address) => get(slug, `/addresses/${a}`, AddressSchema),
+    token: (a: Address) => get(slug, `/tokens/${a}`, TokenSchema),
+    tokenCounters: (a: Address) => get(slug, `/tokens/${a}/counters`, TokenCountersSchema),
+    addressCounters: (a: Address) => get(slug, `/addresses/${a}/counters`, CountersSchema),
+    transaction: (h: string) => get(slug, `/transactions/${h}`, TxSchema),
+    stats: () => get(slug, `/stats`, z.object({ total_blocks: z.string().nullish() }).passthrough()),
+  };
+}
+
+export type BlockscoutClient = ReturnType<typeof blockscoutFor>;
+
+/** Client for the active network (kept for existing callers). */
+export const blockscout: BlockscoutClient = new Proxy({} as BlockscoutClient, { get: (_t, k) => blockscoutFor(activeNetworkSlug())[k as keyof BlockscoutClient] });
 
 export type BlockscoutSmartContract = z.infer<typeof SmartContractSchema>;

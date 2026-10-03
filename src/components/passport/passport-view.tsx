@@ -12,10 +12,14 @@ import { EvidenceButton } from "@/components/ui/evidence";
 import { Metric } from "./metric";
 import { ActivityChart } from "./activity-chart";
 import { RefreshAnalysis, ShareButton, WatchButton, WhatChanged } from "./client-bits";
+import { LaunchStatus } from "@/components/ui/launch-status";
+import { explorerLink, type NetworkSlug } from "@/lib/chain/networks";
 
 const KEY_CHECKS = ["source_verified", "proxy", "mint", "pause", "blacklist", "upgrade", "fees", "owner"];
 const KIND_LABEL = { fact: "Fact", observation: "Observation", creator_claim: "Creator claim", inference: "Inference" } as const;
 const KIND_TONE = { fact: "accent", observation: "observed", creator_claim: "claimed", inference: "muted" } as const;
+const COVERAGE_LABEL = { fully_covered: "Full history indexed", indexing: "Indexing history", partial: "History incomplete", error: "History indexing failed", not_indexed: "Not indexed" } as const;
+const COVERAGE_TONE = { fully_covered: "observed", indexing: "accent", partial: "attention", error: "attention", not_indexed: "muted" } as const;
 
 export function PassportView({ p, series, publicView = false }: { p: TokenPassport; series: SeriesPoint[] | null; publicView?: boolean }) {
   const c = p.contract;
@@ -23,6 +27,8 @@ export function PassportView({ p, series, publicView = false }: { p: TokenPasspo
   const symbol = p.symbol ? `$${p.symbol}` : "Unnamed token";
   const adminDetected = c.checks.filter((x) => ["mint", "pause", "blacklist", "upgrade", "fees", "transfer_limits", "trading_toggle"].includes(x.id) && x.status === "detected").length;
   const statements = buildStatements(p);
+  const chain = p.chain as NetworkSlug;
+  const launchpadName = p.launch?.launchpad === "vibe" || !p.launch ? "vibe/vibe" : p.launch.launchpad;
 
   return (
     <article className="mx-auto max-w-6xl px-4 md:px-6" aria-label={`${symbol} launch passport`}>
@@ -31,8 +37,10 @@ export function PassportView({ p, series, publicView = false }: { p: TokenPasspo
         <div className="mb-4 flex flex-wrap items-center gap-2">
           <span className="label">Launch Passport</span>
           {p.demo ? <Pill tone="claimed">Demo data</Pill> : null}
-          {p.isVibeLaunch ? <Pill tone="accent">vibe/vibe launch · {p.launch?.deploymentId}</Pill> : <Pill tone="attention">Not a recognised vibe/vibe launch</Pill>}
-          {p.launch?.status === "graduated" ? <Pill tone="observed">Graduated</Pill> : p.launch ? <Pill tone="muted">Bonding curve</Pill> : null}
+          {p.isVibeLaunch ? <Pill tone="accent">{launchpadName} launch · {p.launch?.deploymentId}</Pill> : <Pill tone="attention">Not a recognised vibe/vibe launch</Pill>}
+          {p.launch ? <LaunchStatus status={p.launch.status} /> : null}
+          {p.isVibeLaunch ? <Pill tone={COVERAGE_TONE[p.coverage.status]}>{COVERAGE_LABEL[p.coverage.status]}</Pill> : null}
+          <Pill tone="muted">{p.chainName}</Pill>
         </div>
         <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
           <div className="min-w-0">
@@ -41,7 +49,7 @@ export function PassportView({ p, series, publicView = false }: { p: TokenPasspo
             <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
               <span className="flex items-center gap-2">
                 <span className="label">Contract</span>
-                <Address value={p.address} explorer="token" />
+                <Address value={p.address} explorer="token" chain={chain} />
               </span>
               <span className="flex items-center gap-2">
                 <span className="label">Product</span>
@@ -70,6 +78,14 @@ export function PassportView({ p, series, publicView = false }: { p: TokenPasspo
         </dl>
       </header>
 
+      {p.isVibeLaunch && p.coverage.status !== "fully_covered" ? (
+        <div role="status" className="mb-2 rounded-[20px] border border-dashed border-line-strong bg-surface/50 px-5 py-4 text-sm text-fg-2">
+          <span className="font-medium text-fg">{COVERAGE_LABEL[p.coverage.status]}.</span> {p.coverage.explanation}
+          {p.coverage.backfill?.lastError ? <span className="mt-1 block font-mono text-xs text-muted">Last error: {p.coverage.backfill.lastError}</span> : null}
+          <span className="mt-1 block text-xs text-muted">Until then, holder and transfer counts come from the explorer (labelled), and VibeProof&apos;s own counters show as Unavailable, never as zero.</span>
+        </div>
+      ) : null}
+
       {/* ── OVERVIEW ───────────────────────────────────────────── */}
       <Section id="overview" title="Overview" kicker={`observed ${timeAgo(p.observedAt)}`}>
         <div className="grid grid-cols-2 gap-6 sm:grid-cols-3 lg:grid-cols-5">
@@ -80,7 +96,7 @@ export function PassportView({ p, series, publicView = false }: { p: TokenPasspo
           <div>
             <span className="label">Created</span>
             <div className="mt-1 font-mono text-2xl md:text-[28px]">{p.createdAt ? timeAgo(p.createdAt) : "Unknown"}</div>
-            {p.createdAt ? <div className="mt-0.5 text-xs text-muted">{formatUtc(p.createdAt)}</div> : null}
+            {p.createdAt ? <div className="mt-0.5 text-xs text-muted">{formatUtc(p.createdAt)}{p.launch?.createdAtExact === false ? " (≈, interpolated between block headers)" : ""}</div> : null}
           </div>
         </div>
       </Section>
@@ -101,7 +117,7 @@ export function PassportView({ p, series, publicView = false }: { p: TokenPasspo
               return (
                 <Row key={id} label={ch.label} hint={ch.note}>
                   {id === "owner" ? (
-                    ch.value ? <Address value={ch.value} href={`/creator/${ch.value}`} /> : <span className="font-mono text-[12px] text-fg-2">{ch.state === "unavailable" ? "UNAVAILABLE" : "NO owner()"}</span>
+                    ch.value ? <Address value={ch.value} href={`/creator/${ch.value}`} chain={chain} /> : <span className="font-mono text-[12px] text-fg-2">{ch.state === "unavailable" ? "UNAVAILABLE" : "NO owner()"}</span>
                   ) : id === "source_verified" ? (
                     <StateBadge state={ch.state} />
                   ) : (
@@ -177,7 +193,7 @@ export function PassportView({ p, series, publicView = false }: { p: TokenPasspo
             <div>
               <span className="label">Launcher wallet</span>
               <div className="mt-2">
-                <Address value={p.creator.address} href={`/creator/${p.creator.address}`} />
+                <Address value={p.creator.address} href={`/creator/${p.creator.address}?chain=${chain}`} chain={chain} />
               </div>
               <div className="mt-1 text-xs text-muted">First observed {p.creator.firstSeenAt ? timeAgo(p.creator.firstSeenAt) : "—"}</div>
             </div>
@@ -194,7 +210,7 @@ export function PassportView({ p, series, publicView = false }: { p: TokenPasspo
                   </div>
                 ))}
               </dl>
-              <Link href={`/creator/${p.creator.address}`} className="inline-flex items-center gap-1.5 text-sm text-fg-2 hover:text-fg">
+              <Link href={`/creator/${p.creator.address}?chain=${chain}`} className="inline-flex items-center gap-1.5 text-sm text-fg-2 hover:text-fg">
                 View Creator Passport <ArrowUpRight className="size-4" />
               </Link>
             </div>
@@ -249,7 +265,7 @@ export function PassportView({ p, series, publicView = false }: { p: TokenPasspo
               <p className="text-xs leading-relaxed text-muted">A reachable website or active repository shows that something exists and is maintained. It does not show that a product works as described.</p>
               {p.proof.registryTx ? (
                 <p className="text-xs text-fg-2">
-                  Anchored onchain in VibeProofRegistry · <Address value={p.proof.registryTx} explorer="tx" />
+                  Anchored onchain in VibeProofRegistry · <Address value={p.proof.registryTx} explorer="tx" chain={chain} />
                 </p>
               ) : null}
             </div>
@@ -267,7 +283,7 @@ export function PassportView({ p, series, publicView = false }: { p: TokenPasspo
       </Section>
 
       {/* ── ACTIVITY ───────────────────────────────────────────── */}
-      <Section id="activity" title="Onchain activity" kicker={p.indexer.covered ? `indexed through block #${Number(p.indexer.indexedThrough).toLocaleString("en-US")}` : p.indexer.queued ? "queued for full-history indexing · explorer counters shown meanwhile" : "not covered by the VibeProof indexer"}>
+      <Section id="activity" title="Onchain activity" kicker={p.coverage.status === "fully_covered" ? `indexed through block #${Number(p.indexer.indexedThrough).toLocaleString("en-US")}` : `${COVERAGE_LABEL[p.coverage.status].toLowerCase()} · explorer counters shown meanwhile`}>
         <div className="grid grid-cols-2 gap-6 sm:grid-cols-3 lg:grid-cols-6">
           <Metric label="Holders" obs={p.activity.holders} format={(v: number) => formatInt(v)} />
           <Metric label="Transfers" obs={p.activity.transactions} format={(v: number) => formatInt(v)} />
@@ -310,7 +326,7 @@ export function PassportView({ p, series, publicView = false }: { p: TokenPasspo
                         <td className="px-4 py-2 font-mono text-xs tabular">{e.amount ? formatToken(e.amount, p.decimals ?? 18, 2) : "—"}</td>
                         <td className="px-4 py-2 font-mono text-xs text-fg-2">{timeAgo(e.timestamp)}</td>
                         <td className="px-4 py-2">
-                          <a href={`https://explorer.testnet.chain.robinhood.com/tx/${e.txHash}`} target="_blank" rel="noopener noreferrer" className="font-mono text-xs text-fg-2 hover:text-fg">
+                          <a href={explorerLink("tx", e.txHash, chain)} target="_blank" rel="noopener noreferrer" className="font-mono text-xs text-fg-2 hover:text-fg">
                             {shortAddress(e.txHash, 4, 4)}
                           </a>
                         </td>
@@ -320,7 +336,7 @@ export function PassportView({ p, series, publicView = false }: { p: TokenPasspo
                 </table>
               </div>
             ) : (
-              <p className="text-sm text-fg-2">{p.indexer.covered ? "No events indexed yet." : "Events are not indexed for this token."}</p>
+              <p className="text-sm text-fg-2">{p.coverage.status === "fully_covered" ? "No events observed since launch." : "Events are shown once this token's complete history is indexed."}</p>
             )}
           </div>
           <div>
@@ -345,7 +361,82 @@ export function PassportView({ p, series, publicView = false }: { p: TokenPasspo
             <p className="mt-2 text-xs text-muted">Percent of total supply. Protocol contracts are labelled and excluded from the holder count.</p>
           </div>
         </div>
+        {p.reconciliation?.length ? (
+          <div className="mt-8">
+            <h3 className="label mb-3">Indexer vs. explorer</h3>
+            <div className="overflow-x-auto rounded-[20px] border border-line bg-surface/50">
+              <table className="w-full min-w-[520px] text-sm">
+                <caption className="sr-only">The same metric from VibeProof&apos;s index and from Blockscout</caption>
+                <thead>
+                  <tr className="text-left">
+                    {["Metric", "VibeProof indexer", "Blockscout", "Why they can differ"].map((h) => (
+                      <th key={h} scope="col" className="label px-4 py-2.5 font-normal">
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {p.reconciliation.map((r) => (
+                    <tr key={r.metric} className="border-t border-line/70 align-top">
+                      <td className="px-4 py-2 capitalize">{r.metric}</td>
+                      <td className="px-4 py-2 font-mono tabular">{r.indexer === null ? "Unavailable" : formatInt(r.indexer)}</td>
+                      <td className="px-4 py-2 font-mono tabular">{r.explorer === null ? "Unavailable" : formatInt(r.explorer)}</td>
+                      <td className="px-4 py-2 text-xs text-fg-2">{r.explanation}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ) : null}
       </Section>
+
+      {/* ── LAUNCH METADATA ────────────────────────────────────── */}
+      {p.metadata ? (
+        <Section id="metadata" title="Launch metadata" kicker="creator-supplied · integrity checked">
+          <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr] [&>*]:min-w-0">
+            <Card className="px-5">
+              <Row label="Fetch" hint={p.metadata.normalizedUrl ?? p.metadata.uri}>
+                <span className="font-mono text-[12px] text-fg-2">{p.metadata.status === "ok" ? `OK${p.metadata.gateway ? ` via ${p.metadata.gateway}` : ""}` : p.metadata.status.replace(/_/g, " ").toUpperCase()}</span>
+                <EvidenceButton metric="Launch metadata" value={p.metadata.status} evidence={p.metadata.evidence} note={p.metadata.error ?? undefined} />
+              </Row>
+              <Row label="Matches content ID" hint="sha256 of the bytes vs. the IPFS CID in the launch event">
+                <span className="font-mono text-[12px]">{p.metadata.cidVerified === null ? "NOT CHECKABLE" : p.metadata.cidVerified ? "YES" : "NO"}</span>
+              </Row>
+              <Row label="Matches onchain digest" hint="keccak256 of the bytes vs. metadataDigest in the launch event">
+                <span className="font-mono text-[12px]">{p.metadata.digestMatch === null ? "NO DIGEST ONCHAIN" : p.metadata.digestMatch ? "YES" : "NO"}</span>
+              </Row>
+              {(["website", "x", "telegram", "discord"] as const).map((k) =>
+                p.metadata?.claims?.[k] ? (
+                  <Row key={k} label={<span className="capitalize">{k === "x" ? "X" : k}</span>} hint={<a href={p.metadata.claims[k]!} target="_blank" rel="noopener noreferrer nofollow" className="break-all hover:text-fg-2">{p.metadata.claims[k]}</a>}>
+                    {(() => {
+                      const ch = p.metadata?.checks.find((c) => k === "website" && (c.type === "website" || c.type === "github"));
+                      return ch ? (
+                        <>
+                          <StateBadge state={ch.state} />
+                          <EvidenceButton metric={`${k} (from metadata)`} value={ch.summary} evidence={ch.evidence} />
+                        </>
+                      ) : (
+                        <StateBadge state="creator_claimed" />
+                      );
+                    })()}
+                  </Row>
+                ) : null,
+              )}
+            </Card>
+            <div className="space-y-4 text-sm text-fg-2">
+              {p.metadata.claims?.description ? (
+                <blockquote className="border-l border-claimed/40 pl-4">
+                  <span className="label !text-claimed">Creator claim</span>
+                  <p className="mt-1 break-words">{p.metadata.claims.description}</p>
+                </blockquote>
+              ) : null}
+              <p className="text-xs leading-relaxed text-muted">Matching hashes prove these are the exact bytes the launch committed to. They do not make the content true: names, descriptions and links in metadata are claims by the creator.</p>
+            </div>
+          </div>
+        </Section>
+      ) : null}
 
       {/* ── STATEMENT LEDGER ───────────────────────────────────── */}
       <Section id="statements" title="Statement ledger" kicker="every claim, classified">
@@ -365,11 +456,11 @@ export function PassportView({ p, series, publicView = false }: { p: TokenPasspo
       {/* ── PROVENANCE ─────────────────────────────────────────── */}
       <Section id="provenance" title="Provenance">
         <div className="grid gap-4 text-sm text-fg-2 md:grid-cols-3">
-          <Prov k="Chain reads" v={`Robinhood Chain Testnet (46630), block #${Number(c.block).toLocaleString("en-US")}, ${formatUtc(c.observedAt)}`} />
+          <Prov k="Chain reads" v={`${p.chainName} (${p.chainId}), block #${Number(c.block).toLocaleString("en-US")}, ${formatUtc(c.observedAt)}`} />
           <Prov k="Indexer" v={p.indexer.indexedThrough ? `Transfer + curve events through block #${Number(p.indexer.indexedThrough).toLocaleString("en-US")}` : "No indexer data"} />
           <Prov k="Explorer" v="Blockscout v2 API: source verification, proxy metadata, fallback counters" />
-          {p.launch ? <Prov k="Launch event" v={<Address value={p.launch.txHash} explorer="tx" />} /> : null}
-          {p.launch ? <Prov k="Factory" v={<Address value={p.launch.factory} />} /> : null}
+          {p.launch ? <Prov k="Launch event" v={<Address value={p.launch.txHash} explorer="tx" chain={chain} />} /> : null}
+          {p.launch ? <Prov k="Factory" v={<Address value={p.launch.factory} chain={chain} />} /> : null}
           {p.metadataUri ? <Prov k="Metadata URI (creator-provided)" v={<span className="break-all font-mono text-xs">{p.metadataUri}</span>} /> : null}
         </div>
         <p className="mt-6 text-xs text-muted">Every metric has a “Why am I seeing this?” control showing its source, block and method. VibeProof never converts unavailable data to zero.</p>

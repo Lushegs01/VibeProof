@@ -7,7 +7,9 @@ import { WagmiProvider, useAccount, useDisconnect, useSignMessage, useSwitchChai
 import { createSiweMessage } from "viem/siwe";
 import { Check, Loader2 } from "lucide-react";
 import { WalletPicker, wagmiConfig, walletErrorMessage } from "./wallet";
-import { robinhoodTestnet } from "@/lib/chain/chains";
+import { activeNetwork, tokenPath } from "@/lib/chain/networks";
+
+const appChain = activeNetwork().chain;
 import { REGISTRY_ABI } from "@/lib/registry/abi";
 import { shortAddress } from "@/lib/util/address";
 import { StateBadge } from "@/components/ui/state-badge";
@@ -65,7 +67,7 @@ function Flow({ initialToken, registry }: { initialToken: string; registry: stri
     setBusy("signin");
     setError(null);
     try {
-      if (chainId !== robinhoodTestnet.id) await switchChainAsync({ chainId: robinhoodTestnet.id });
+      if (chainId !== appChain.id) await switchChainAsync({ chainId: appChain.id });
       const { data } = await (await fetch("/api/auth/nonce")).json();
       const message = createSiweMessage({
         domain: location.host,
@@ -73,7 +75,7 @@ function Flow({ initialToken, registry }: { initialToken: string; registry: stri
         statement: "Sign in to VibeProof to submit project proof. This signature does not authorise any transaction or spend.",
         uri: location.origin,
         version: "1",
-        chainId: robinhoodTestnet.id,
+        chainId: appChain.id,
         nonce: data.nonce,
         issuedAt: new Date(),
         expirationTime: new Date(Date.now() + 10 * 60_000),
@@ -114,7 +116,7 @@ function Flow({ initialToken, registry }: { initialToken: string; registry: stri
     try {
       const uri = `${location.origin}/api/tokens/${token.trim()}/proof`;
       const has = await publicClient.readContract({ address: registry as `0x${string}`, abi: REGISTRY_ABI, functionName: "hasProof", args: [address!, token.trim() as `0x${string}`] });
-      const hash = await writeContractAsync({ address: registry as `0x${string}`, abi: REGISTRY_ABI, functionName: has ? "updateProof" : "submitProof", args: [token.trim() as `0x${string}`, result.metadataHash, uri], chainId: robinhoodTestnet.id });
+      const hash = await writeContractAsync({ address: registry as `0x${string}`, abi: REGISTRY_ABI, functionName: has ? "updateProof" : "submitProof", args: [token.trim() as `0x${string}`, result.metadataHash, uri], chainId: appChain.id });
       await publicClient.waitForTransactionReceipt({ hash });
       const r = await fetch("/api/proofs/anchor", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ token: token.trim(), txHash: hash }) });
       if (!r.ok) throw new Error((await r.json()).error?.message ?? "Anchor verification failed");
@@ -150,7 +152,7 @@ function Flow({ initialToken, registry }: { initialToken: string; registry: stri
         <p className="mt-6 text-sm text-fg-2">Your submission is now observable through VibeProof. Checks are re-run periodically; nothing here is a certification.</p>
         <p className="mt-2 break-all font-mono text-xs text-muted">metadata hash {result.metadataHash}</p>
         <div className="mt-6 flex flex-wrap gap-3">
-          <Link href={`/token/robinhood-testnet/${token.trim()}`} className="btn btn-primary h-10 px-5 text-sm">
+          <Link href={tokenPath(token.trim())} className="btn btn-primary h-10 px-5 text-sm">
             View Launch Passport
           </Link>
           {registry && !anchorTx ? (

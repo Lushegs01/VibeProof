@@ -4,6 +4,7 @@ import { getAddress } from "viem";
 import { resolveShareId } from "@/lib/services/share-service";
 import { getActivitySeries, getTokenPassport } from "@/lib/services/token-service";
 import { PassportView } from "@/components/passport/passport-view";
+import { getNetworkByChainId } from "@/lib/chain/networks";
 
 export const dynamic = "force-dynamic";
 type Props = { params: Promise<{ id: string }> };
@@ -11,8 +12,10 @@ type Props = { params: Promise<{ id: string }> };
 async function load(id: string) {
   const token = await resolveShareId(id);
   if (!token) return null;
-  const a = getAddress(token);
-  const [{ passport }, series] = await Promise.all([getTokenPassport(a), getActivitySeries(a).catch(() => null)]);
+  const a = getAddress(token.address);
+  const network = getNetworkByChainId(token.chainId)?.slug;
+  if (!network) return null;
+  const [{ passport }, series] = await Promise.all([getTokenPassport(a, { network }), getActivitySeries(a, 7, network).catch(() => null)]);
   return passport ? { passport, series } : null;
 }
 

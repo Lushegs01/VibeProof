@@ -2,6 +2,7 @@ import { ImageResponse } from "next/og";
 import { getAddress } from "viem";
 import { resolveShareId } from "@/lib/services/share-service";
 import { getTokenPassport } from "@/lib/services/token-service";
+import { getNetworkByChainId } from "@/lib/chain/networks";
 
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
@@ -11,7 +12,8 @@ export const alt = "VibeProof Launch Passport";
 export default async function OgImage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const token = await resolveShareId(id);
-  const p = token ? (await getTokenPassport(getAddress(token))).passport : null;
+  const network = token ? getNetworkByChainId(token.chainId) : null;
+  const p = token && network ? (await getTokenPassport(getAddress(token.address), { network: network.slug })).passport : null;
   const sym = p?.symbol ? `$${p.symbol}` : "Launch";
   const rows: [string, string][] = p
     ? [
@@ -39,7 +41,7 @@ export default async function OgImage({ params }: { params: Promise<{ id: string
             </div>
           ))}
         </div>
-        <div style={{ marginTop: 28, fontSize: 18, color: "#555" }}>Robinhood Chain Testnet · evidence, not advice</div>
+        <div style={{ marginTop: 28, fontSize: 18, color: "#555" }}>{network?.name ?? "Robinhood Chain"} · evidence, not advice</div>
       </div>
     ),
     size,

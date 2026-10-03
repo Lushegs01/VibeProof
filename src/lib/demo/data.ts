@@ -78,6 +78,7 @@ export function demoPassport(address: string): TokenPassport | null {
   const proofTypes = (["website", "github", "demo"] as const).slice(0, t.proof);
   return {
     chain: "robinhood-testnet",
+    chainName: "Robinhood Chain Testnet (DEMO DATA)",
     chainId: 46630,
     address: t.addr,
     name: t.name,
@@ -87,7 +88,7 @@ export function demoPassport(address: string): TokenPassport | null {
     isVibeLaunch: true,
     createdAt: iso(t.hours),
     metadataUri: null,
-    launch: { deploymentId: "v6-run15", factory: "0xe794217880011f9cA6961340eD5c16EC9559Fea0", launchId: String(t.hours), curve: A(0xcc000 + t.hours), pairCurrency: null, txHash: `0x${"de".repeat(31)}${t.hours.toString(16).padStart(2, "0")}`, blockNumber: String(126000000 + t.hours * 20000), createdAt: iso(t.hours), status: t.graduated ? "graduated" : "bonding", graduatedAt: t.graduated ? iso(t.hours + 20) : null },
+    launch: { launchpad: "vibe", deploymentId: "v6-run15", version: "v6", eventName: "LaunchCreated", factory: "0xe794217880011f9cA6961340eD5c16EC9559Fea0", launchId: String(t.hours), curve: A(0xcc000 + t.hours), pairCurrency: "0x0000000000000000000000000000000000000000", txHash: `0x${"de".repeat(31)}${t.hours.toString(16).padStart(2, "0")}`, blockNumber: String(126000000 + t.hours * 20000), createdAt: iso(t.hours), createdAtExact: true, status: t.graduated ? "graduated" : "bonding", graduatedAt: t.graduated ? iso(t.hours + 20) : null, graduatedTx: t.graduated ? `0x${"9a".repeat(32)}` : null, curveCompletedAt: null },
     contract: demoAnalysis(t),
     creator: { address: t.creator, firstSeenAt: iso(launchesBy[0].hours), launchCount: launchesBy.length, graduatedLaunchCount: launchesBy.filter((x) => x.graduated).length, activeLaunchCount: launchesBy.filter((x) => !x.graduated).length, historicalLaunchCount: 0, evidence: ev("Launch events grouped by launcher") },
     activity: {
@@ -125,6 +126,9 @@ export function demoPassport(address: string): TokenPassport | null {
       { wallet: A(0xa0003), balance: String(18_000_000n * 10n ** 18n), pct: 1.8 },
     ],
     indexer: { indexedThrough: "126600000", covered: true },
+    coverage: { status: "fully_covered", explanation: "DEMO DATA: deterministic fixture.", indexedThrough: "126600000", launchBlock: String(126000000 + t.hours * 20000), backfill: null },
+    metadata: null,
+    reconciliation: null,
     observedAt: iso(72),
     demo: true,
   };

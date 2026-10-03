@@ -1,5 +1,5 @@
 import { route, ok } from "@/lib/api/response";
-import { baseMeta } from "@/lib/api/params";
+import { baseMeta, networkParam } from "@/lib/api/params";
 import { discover, SORTS, CATEGORIES, type SortKey, type CategoryKey } from "@/lib/services/discover-service";
 
 export const GET = route("discover", { limit: 120 }, async (req) => {
@@ -9,6 +9,8 @@ export const GET = route("discover", { limit: 120 }, async (req) => {
   const limit = Math.min(100, Math.max(1, Number(sp.get("limit") ?? 50) || 50));
   const s = sort in SORTS ? sort : "newest";
   const c = category in CATEGORIES ? category : "all";
-  const { items, cached } = await discover(s, c, limit);
-  return ok({ sort: s, sortExplanation: SORTS[s].explain, category: c, items }, baseMeta("VibeProof indexer", cached), { maxAge: 15 });
+  const n = networkParam(req);
+  if ("error" in n) return n.error;
+  const { items, cached, excludedIncomplete } = await discover(s, c, limit, n.network);
+  return ok({ chain: n.network, sort: s, sortExplanation: SORTS[s].explain, category: c, excludedIncomplete, items }, baseMeta("VibeProof indexer", cached), { maxAge: 15 });
 });

@@ -7,20 +7,25 @@ import { formatInt, formatUtc, timeAgo } from "@/lib/util/format";
 import { Address } from "@/components/ui/address";
 import { Section, Pill } from "@/components/ui/primitives";
 import { EvidenceButton } from "@/components/ui/evidence";
+import { LaunchStatus } from "@/components/ui/launch-status";
+import { explorerLink, getNetwork, tokenPath, type NetworkSlug } from "@/lib/chain/networks";
 
 export const dynamic = "force-dynamic";
-type Props = { params: Promise<{ address: string }> };
+type Props = { params: Promise<{ address: string }>; searchParams: Promise<{ chain?: string }> };
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { address } = await params;
   return { title: `Creator ${shortAddress(address)}` };
 }
 
-export default async function CreatorPage({ params }: Props) {
+export default async function CreatorPage({ params, searchParams }: Props) {
   const { address } = await params;
+  const { chain } = await searchParams;
+  const net = chain ? getNetwork(chain) : null;
+  if (chain && !net) notFound();
   const a = parseAddress(address) ?? parseAddress(address.toLowerCase());
   if (!a) notFound();
-  const { creator } = await getCreatorPassport(a);
+  const { creator } = await getCreatorPassport(a, net?.slug);
 
   if (!creator)
     return (
@@ -29,7 +34,7 @@ export default async function CreatorPage({ params }: Props) {
         <div className="mt-4">
           <Address value={a} short={false} className="text-lg" />
         </div>
-        <p className="mt-6 max-w-lg text-fg-2">No vibe/vibe launches from this wallet have been observed by the VibeProof indexer. This is an observation about our index, not a statement about the wallet.</p>
+        <p className="mt-6 max-w-lg text-fg-2">No launches from this wallet have been observed by the VibeProof indexer on this network. This is an observation about our index, not a statement about the wallet.</p>
       </div>
     );
 
@@ -79,20 +84,22 @@ export default async function CreatorPage({ params }: Props) {
               {creator.launches.map((l) => (
                 <tr key={l.token} className="border-t border-line/70 hover:bg-surface-2">
                   <td className="px-4 py-3">
-                    <Link href={`/token/robinhood-testnet/${l.token}`} className="font-medium hover:underline">
+                    <Link href={tokenPath(l.token, l.chain as NetworkSlug)} className="font-medium hover:underline">
                       {l.symbol ? `$${l.symbol}` : shortAddress(l.token)}
                     </Link>
                     <div className="max-w-[220px] truncate text-xs text-fg-2">{l.name}</div>
                   </td>
                   <td className="px-4 py-3 font-mono text-xs text-fg-2">
-                    <a href={`https://explorer.testnet.chain.robinhood.com/tx/${l.txHash}`} target="_blank" rel="noopener noreferrer" className="hover:text-fg">
+                    <a href={explorerLink("tx", l.txHash, l.chain as NetworkSlug)} target="_blank" rel="noopener noreferrer" className="hover:text-fg">
                       {formatUtc(l.createdAt)}
                     </a>
                   </td>
-                  <td className="px-4 py-3">{l.status === "graduated" ? <Pill tone="observed">Graduated</Pill> : <Pill tone="muted">Bonding</Pill>}</td>
-                  <td className="px-4 py-3 text-right font-mono tabular">{l.holders === null ? <span className="text-fg-2">Unavailable</span> : formatInt(l.holders)}</td>
-                  <td className="px-4 py-3 text-right font-mono tabular">{l.transactions === null ? <span className="text-fg-2">Unavailable</span> : formatInt(l.transactions)}</td>
-                  <td className="px-4 py-3 font-mono text-xs text-fg-2">{l.lastActivityAt ? timeAgo(l.lastActivityAt) : "None observed"}</td>
+                  <td className="px-4 py-3">
+                    <LaunchStatus status={l.status} />
+                  </td>
+                  <td className="px-4 py-3 text-right font-mono tabular">{l.holders === null ? <span className="text-fg-2">{l.historyComplete ? "Unavailable" : "History pending"}</span> : formatInt(l.holders)}</td>
+                  <td className="px-4 py-3 text-right font-mono tabular">{l.transactions === null ? <span className="text-fg-2">{l.historyComplete ? "Unavailable" : "History pending"}</span> : formatInt(l.transactions)}</td>
+                  <td className="px-4 py-3 font-mono text-xs text-fg-2">{!l.historyComplete ? "Unavailable" : l.lastActivityAt ? timeAgo(l.lastActivityAt) : "None observed"}</td>
                 </tr>
               ))}
             </tbody>

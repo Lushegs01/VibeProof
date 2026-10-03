@@ -5,8 +5,10 @@ import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import type { FeedItem } from "@/lib/services/discover-service";
 import { shortAddress } from "@/lib/util/address";
+import { explorerLink, getNetwork, tokenPath, type NetworkSlug } from "@/lib/chain/networks";
 
-const KIND: Record<string, string> = { launch: "Launch", proof: "Proof", creator_activity: "Creator", graduation: "Graduation", holders: "Holders" };
+const KIND: Record<string, string> = { launch: "Launch", proof: "Proof", creator_activity: "Creator", graduation: "Graduation", curve_completed: "Curve full", buy: "Buy", sell: "Sell", holders: "Holders" };
+const slugOf = (c: string) => (getNetwork(c)?.slug ?? undefined) as NetworkSlug | undefined;
 
 export function LiveFeed({ initial }: { initial: FeedItem[] }) {
   const [items, setItems] = useState(initial);
@@ -44,13 +46,13 @@ export function LiveFeed({ initial }: { initial: FeedItem[] }) {
               </time>
               <span className="label hidden sm:block">{KIND[f.kind] ?? f.kind}</span>
               <div className="min-w-0">
-                <Link href={`/token/robinhood-testnet/${f.token}`} className="font-medium hover:underline">
+                <Link href={tokenPath(f.token, slugOf(f.chain))} className="font-medium hover:underline">
                   {f.symbol ? `$${f.symbol}` : shortAddress(f.token)}
                 </Link>
                 <p className="truncate text-sm text-fg-2">{f.message}</p>
               </div>
               {f.txHash ? (
-                <a href={`https://explorer.testnet.chain.robinhood.com/tx/${f.txHash}`} target="_blank" rel="noopener noreferrer" className="col-start-2 font-mono text-xs text-fg-2 hover:text-fg sm:col-start-auto">
+                <a href={explorerLink("tx", f.txHash, slugOf(f.chain))} target="_blank" rel="noopener noreferrer" className="col-start-2 font-mono text-xs text-fg-2 hover:text-fg sm:col-start-auto">
                   {shortAddress(f.txHash, 4, 4)}
                 </a>
               ) : (

@@ -5,18 +5,23 @@ import { formatInt, timeAgo } from "@/lib/util/format";
 import { shortAddress } from "@/lib/util/address";
 import { Pill } from "@/components/ui/primitives";
 import { cn } from "@/lib/util/cn";
+import { LaunchStatus } from "@/components/ui/launch-status";
+import { getNetwork, activeNetwork, tokenPath, type NetworkSlug } from "@/lib/chain/networks";
+import { notFound } from "next/navigation";
 
 export const metadata: Metadata = { title: "Discover launches" };
 export const dynamic = "force-dynamic";
 
-type Props = { searchParams: Promise<{ sort?: string; category?: string }> };
+type Props = { searchParams: Promise<{ sort?: string; category?: string; chain?: string }> };
 
 export default async function DiscoverPage({ searchParams }: Props) {
   const sp = await searchParams;
   const sort = (sp.sort && sp.sort in SORTS ? sp.sort : "newest") as SortKey;
   const category = (sp.category && sp.category in CATEGORIES ? sp.category : "all") as CategoryKey;
-  const { items } = await discover(sort, category, 60);
-  const href = (s: string, c: string) => `/discover?sort=${s}&category=${c}`;
+  const net = sp.chain ? getNetwork(sp.chain) : activeNetwork();
+  if (!net) notFound();
+  const { items, excludedIncomplete } = await discover(sort, category, 60, net.slug);
+  const href = (s: string, c: string) => `/discover?sort=${s}&category=${c}${sp.chain ? `&chain=${net.slug}` : ""}`;
 
   return (
     <div className="mx-auto max-w-6xl px-4 pt-10 md:px-6 md:pt-14">
@@ -41,6 +46,7 @@ export default async function DiscoverPage({ searchParams }: Props) {
       </div>
       <p className="mt-3 text-xs text-muted">
         <span className="text-fg-2">How this is sorted:</span> {SORTS[sort].explain}
+        {excludedIncomplete ? <> {excludedIncomplete.toLocaleString("en-US")} launches whose history is still being indexed are not ranked.</> : null}
       </p>
 
       <div className="mt-6 overflow-x-auto rounded-[20px] border border-line bg-surface/50">
@@ -59,18 +65,20 @@ export default async function DiscoverPage({ searchParams }: Props) {
             {items.map((t) => (
               <tr key={t.address} className="border-t border-line/70 hover:bg-surface-2">
                 <td className="px-4 py-3">
-                  <Link href={`/token/robinhood-testnet/${t.address}`} className="font-medium hover:underline">
+                  <Link href={tokenPath(t.address, t.chain as NetworkSlug)} className="font-medium hover:underline">
                     {t.symbol ? `$${t.symbol}` : shortAddress(t.address)}
                   </Link>
                   <div className="max-w-[200px] truncate text-xs text-fg-2">{t.name}</div>
                 </td>
                 <td className="px-4 py-3 font-mono text-xs">{t.creator ? <Link href={`/creator/${t.creator}`} className="text-fg-2 hover:text-fg">{shortAddress(t.creator)}</Link> : "—"}</td>
                 <td className="px-4 py-3 font-mono text-xs text-fg-2">{timeAgo(t.createdAt)}</td>
-                <td className="px-4 py-3 text-right font-mono tabular">{t.holders === null ? <span className="text-fg-2">Unavailable</span> : formatInt(t.holders)}</td>
-                <td className="px-4 py-3 text-right font-mono tabular">{t.transactions === null ? <span className="text-fg-2">Unavailable</span> : formatInt(t.transactions)}</td>
-                <td className="px-4 py-3">{t.status === "graduated" ? <Pill tone="observed">Graduated</Pill> : <Pill tone="muted">Bonding</Pill>}</td>
+                <td className="px-4 py-3 text-right font-mono tabular">{t.holders === null ? <span className="text-fg-2">{t.historyComplete ? "Unavailable" : "History pending"}</span> : formatInt(t.holders)}</td>
+                <td className="px-4 py-3 text-right font-mono tabular">{t.transactions === null ? <span className="text-fg-2">{t.historyComplete ? "Unavailable" : "History pending"}</span> : formatInt(t.transactions)}</td>
+                <td className="px-4 py-3">
+                  <LaunchStatus status={t.status} />
+                </td>
                 <td className="px-4 py-3">{t.proofSubmitted ? <Pill tone="accent">Submitted</Pill> : <span className="text-xs text-muted">—</span>}</td>
-                <td className="px-4 py-3 font-mono text-xs text-fg-2">{t.lastActivityAt ? timeAgo(t.lastActivityAt) : "None"}</td>
+                <td className="px-4 py-3 font-mono text-xs text-fg-2">{!t.historyComplete ? "Unavailable" : t.lastActivityAt ? timeAgo(t.lastActivityAt) : "None observed"}</td>
               </tr>
             ))}
           </tbody>
