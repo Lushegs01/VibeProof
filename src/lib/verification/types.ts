@@ -17,6 +17,8 @@ export type Evidence = {
   contract?: string;
   url?: string;
   detail?: string;
+  /** Network the evidence refers to (for explorer links); defaults to the active network. */
+  network?: string;
 };
 
 export type Observed<T> = {

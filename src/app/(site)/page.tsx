@@ -6,6 +6,9 @@ import { isDemoMode } from "@/lib/demo/mode";
 import { formatInt, timeAgo } from "@/lib/util/format";
 import { getAddress } from "viem";
 import { FaqList, OpenSearchButton, type Faq } from "@/components/landing/client";
+import { activeNetwork, tokenPath, type NetworkSlug } from "@/lib/chain/networks";
+
+const NET = activeNetwork();
 
 export const revalidate = 30;
 
@@ -26,15 +29,15 @@ const STEPS = [
 const FAQ: Faq[] = [
   { q: "What is VibeProof?", a: "VibeProof is the verification layer for tokens launched through vibe/vibe on Robinhood Chain. Each launch gets a Launch Passport that combines what the contract can do, what its creator has launched before, whether a real product stands behind it, and what is happening onchain." },
   { q: "Is a passport a safety rating?", a: "No. VibeProof never labels a token safe, legit or a scam, and there is no trust score. It shows evidence (facts, observations and creator claims), each labelled, so you can draw your own conclusions." },
-  { q: "Where does the data come from?", a: "Contract reads and event logs come from Robinhood Chain Testnet, source verification from the Blockscout explorer, and product checks from the linked website and the GitHub API. Every metric has a “Why am I seeing this?” panel naming its source, block and method." },
+  { q: "Where does the data come from?", a: `Contract reads and event logs come from ${NET.name} itself (the canonical source), source verification from the Blockscout explorer, and product checks from the linked website and the GitHub API. Every metric has a “Why am I seeing this?” panel naming its source, block and method.` },
   { q: "Why does a metric say “Unavailable”?", a: "Because the check could not be completed, for example when the explorer timed out or a launch's history is still being indexed. VibeProof never shows a failed check as zero." },
   { q: "Who can submit project proof?", a: "Only the wallet that launched the token, verified by signing in with Ethereum. Websites and repositories are then checked automatically; social links are recorded as creator claims." },
-  { q: "Which launches are covered?", a: "Every launch from the vibe/vibe v5 and v6 factories on Robinhood Chain Testnet. Testnet assets have no value." },
+  { q: "Which launches are covered?", a: NET.testnet ? `Every launch from the vibe/vibe v5 and v6 factories on ${NET.name}, discovered from the factories' own events. Testnet assets have no value.` : `Every launch from verified vibe/vibe factories on ${NET.name}. If none is configured yet, nothing is listed: VibeProof does not guess factory addresses.` },
 ];
 
 export default async function Home() {
   const demo = isDemoMode();
-  const [stats, { items }, feed] = await Promise.all([safe(() => ecosystemStats(), null), safe(() => discover("active", "all", 6), { items: [], cached: false }), safe(() => activityFeed(8), [])]);
+  const [stats, { items }, feed] = await Promise.all([safe(() => ecosystemStats(), null), safe(() => discover("active", "all", 6), { items: [], cached: false, excludedIncomplete: null }), safe(() => activityFeed(8), [])]);
   const featured = items[0] ?? null;
   const series = featured ? await safe(() => getActivitySeries(getAddress(featured.address), 2), null) : null;
 
@@ -71,7 +74,7 @@ export default async function Home() {
           <div className="horizon top-[42%] md:top-[45%]" />
         </div>
         <div className="relative pb-8 pt-4 md:absolute md:inset-x-0 md:bottom-0 md:bg-gradient-to-t md:from-bg md:via-bg/80 md:to-transparent md:pt-16">
-          <p className="text-center text-sm text-fg-2">{demo ? "Demo data · deterministic fixtures" : "Indexed directly from Robinhood Chain Testnet"}</p>
+          <p className="text-center text-sm text-fg-2">{demo ? "Demo data · deterministic fixtures" : `Indexed directly from ${NET.name}`}</p>
           <dl className="mx-auto mt-5 grid max-w-5xl grid-cols-2 gap-y-5 px-4 text-center sm:grid-cols-4">
             {[
               ["Launches indexed", stats ? formatInt(stats.launches) : "Unavailable"],
@@ -134,7 +137,7 @@ export default async function Home() {
             <ul className="relative mt-10 grid gap-3 md:absolute md:inset-y-10 md:right-10 md:mt-0 md:block md:w-[52%]" aria-label="Recent activity">
               {feed.slice(0, 5).map((f, i) => (
                 <li key={f.id} className="md:absolute" style={PIN_POS[i]}>
-                  <Link href={`/token/robinhood-testnet/${f.token}`} className="flex items-center gap-2.5 whitespace-nowrap rounded-full border border-[#5cc6ea40] bg-[#04101acc] py-1.5 pl-1.5 pr-4 text-xs shadow-[0_8px_30px_-10px_#2fb3e8aa] backdrop-blur transition-colors hover:border-accent">
+                  <Link href={tokenPath(f.token, f.chain as NetworkSlug)} className="flex items-center gap-2.5 whitespace-nowrap rounded-full border border-[#5cc6ea40] bg-[#04101acc] py-1.5 pl-1.5 pr-4 text-xs shadow-[0_8px_30px_-10px_#2fb3e8aa] backdrop-blur transition-colors hover:border-accent">
                     <span className="flex size-7 items-center justify-center rounded-full bg-[linear-gradient(135deg,#d3e3e6,#5cc6ea,#0b65a3)] font-display text-[10px] text-[#00131c]">{(f.symbol ?? "?").slice(0, 2)}</span>
                     <span className="font-medium text-fg">{f.symbol ? `$${f.symbol}` : "Token"}</span>
                     <span className="hidden text-fg-2 lg:inline">{PIN_LABEL[f.kind] ?? f.kind}</span>
@@ -158,7 +161,7 @@ export default async function Home() {
             <div className="relative overflow-hidden rounded-[20px] bg-[linear-gradient(160deg,#04121d_0%,#0a3f5e_55%,#3bb5e3_100%)] px-6 py-10 md:px-12">
               {featured ? (
                 <div className="mx-auto max-w-xs space-y-4">
-                  <Link href={`/token/robinhood-testnet/${featured.address}`} className="block rounded-2xl bg-white p-4 text-[#0b1a24] shadow-xl transition-transform hover:-translate-y-0.5">
+                  <Link href={tokenPath(featured.address, featured.chain as NetworkSlug)} className="block rounded-2xl bg-white p-4 text-[#0b1a24] shadow-xl transition-transform hover:-translate-y-0.5">
                     <div className="flex items-center gap-3">
                       <span className="flex size-9 items-center justify-center rounded-full bg-[#e6f4f8] font-display text-[11px] text-[#0b65a3]">{(featured.symbol ?? "?").slice(0, 2)}</span>
                       <div>

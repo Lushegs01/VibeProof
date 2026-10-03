@@ -1,52 +1,81 @@
-import { defineChain } from "viem";
+import { NETWORKS, activeNetworkSlug, isNetworkSlug, robinhoodMainnet, robinhoodTestnet, type NetworkInfo, type NetworkSlug } from "./networks";
 
 /**
- * Verified network information (see README → "Verified Network Information").
- * Checked 2026-09-30: eth_chainId on the public RPC returned 0xb626 (46630).
+ * SERVER-ONLY network configuration. Provider URLs may embed API keys (e.g. Alchemy's
+ * `/v2/{key}`), so they are read from non-public env vars here and never shipped to the client.
+ *
+ * Each network has its own variables; mainnet and testnet never share mutable settings.
+ *
+ *   ROBINHOOD_MAINNET_RPC_URL / ROBINHOOD_MAINNET_WSS_URL / BLOCKSCOUT_MAINNET_API_URL
+ *   ROBINHOOD_TESTNET_RPC_URL / ROBINHOOD_TESTNET_WSS_URL / BLOCKSCOUT_TESTNET_API_URL
+ *
+ * `BLOCKSCOUT_API_URL` (the old single-network name) is honoured for testnet only.
  */
-export const robinhoodTestnet = defineChain({
-  id: 46630,
-  name: "Robinhood Chain Testnet",
-  nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
-  rpcUrls: {
-    default: { http: ["https://rpc.testnet.chain.robinhood.com"] },
-  },
-  blockExplorers: {
-    default: { name: "Blockscout", url: "https://explorer.testnet.chain.robinhood.com" },
-  },
-  contracts: {
-    multicall3: { address: "0xcA11bde05977b3631167028862bE2a173976CA11" },
-  },
-  testnet: true,
-});
+export { robinhoodMainnet, robinhoodTestnet, explorerLink, NETWORKS, activeNetworkSlug } from "./networks";
+export type { NetworkSlug } from "./networks";
 
-export type ChainSlug = "robinhood-testnet";
+/** @deprecated use NetworkSlug */
+export type ChainSlug = NetworkSlug;
 
-export type ChainConfig = {
-  slug: ChainSlug;
-  chain: typeof robinhoodTestnet;
+export type ChainConfig = NetworkInfo & {
   rpcUrl: string;
+  /** true when no provider URL is configured and the rate-limited public endpoint is used. */
+  usingPublicRpc: boolean;
   wssUrl?: string;
-  explorerUrl: string;
   explorerApiUrl: string;
 };
 
-export function getChainConfig(slug: string = "robinhood-testnet"): ChainConfig | null {
-  if (slug !== "robinhood-testnet") return null;
+const ENV: Record<NetworkSlug, { rpc: string; wss: string; blockscout: string[]; blockscoutDefault: string }> = {
+  "robinhood-mainnet": {
+    rpc: "ROBINHOOD_MAINNET_RPC_URL",
+    wss: "ROBINHOOD_MAINNET_WSS_URL",
+    blockscout: ["BLOCKSCOUT_MAINNET_API_URL"],
+    blockscoutDefault: "https://robinhoodchain.blockscout.com/api",
+  },
+  "robinhood-testnet": {
+    rpc: "ROBINHOOD_TESTNET_RPC_URL",
+    wss: "ROBINHOOD_TESTNET_WSS_URL",
+    blockscout: ["BLOCKSCOUT_TESTNET_API_URL", "BLOCKSCOUT_API_URL"],
+    blockscoutDefault: "https://explorer.testnet.chain.robinhood.com/api",
+  },
+};
+
+const env = (k: string) => {
+  const v = process.env[k]?.trim();
+  return v ? v : undefined;
+};
+
+export function getChainConfig(slug: string = activeNetworkSlug()): ChainConfig | null {
+  if (!isNetworkSlug(slug)) return null;
+  const n = NETWORKS[slug];
+  const e = ENV[slug];
+  const rpc = env(e.rpc);
   return {
-    slug: "robinhood-testnet",
-    chain: robinhoodTestnet,
-    rpcUrl: process.env.ROBINHOOD_TESTNET_RPC_URL || robinhoodTestnet.rpcUrls.default.http[0],
-    wssUrl: process.env.ROBINHOOD_TESTNET_WSS_URL || undefined,
-    explorerUrl: robinhoodTestnet.blockExplorers.default.url,
-    explorerApiUrl: process.env.BLOCKSCOUT_API_URL || "https://explorer.testnet.chain.robinhood.com/api",
+    ...n,
+    rpcUrl: rpc ?? n.publicRpcUrl,
+    usingPublicRpc: !rpc || rpc.replace(/\/$/, "") === n.publicRpcUrl,
+    wssUrl: env(e.wss),
+    explorerApiUrl: e.blockscout.map(env).find(Boolean) ?? e.blockscoutDefault,
   };
 }
 
-export const SUPPORTED_CHAINS: ChainSlug[] = ["robinhood-testnet"];
-export const DEFAULT_CHAIN: ChainSlug = "robinhood-testnet";
-
-export function explorerLink(kind: "address" | "tx" | "block" | "token", value: string | number | bigint) {
-  const base = robinhoodTestnet.blockExplorers.default.url;
-  return `${base}/${kind}/${value.toString()}`;
+export function getChainConfigById(chainId: number): ChainConfig | null {
+  const n = Object.values(NETWORKS).find((x) => x.chainId === chainId);
+  return n ? getChainConfig(n.slug) : null;
 }
+
+/**
+ * Networks the indexer processes. `INDEXER_NETWORKS=robinhood-testnet,robinhood-mainnet`;
+ * defaults to the active network. Unknown names are rejected loudly rather than ignored.
+ */
+export function indexerNetworks(): NetworkSlug[] {
+  const raw = env("INDEXER_NETWORKS");
+  if (!raw) return [activeNetworkSlug()];
+  const list = raw.split(",").map((s) => s.trim()).filter(Boolean);
+  const bad = list.filter((s) => !isNetworkSlug(s));
+  if (bad.length) throw new Error(`INDEXER_NETWORKS contains unknown network(s): ${bad.join(", ")}. Supported: ${Object.keys(NETWORKS).join(", ")}`);
+  return [...new Set(list)] as NetworkSlug[];
+}
+
+export const SUPPORTED_CHAINS = Object.keys(NETWORKS) as NetworkSlug[];
+export const DEFAULT_CHAIN: NetworkSlug = "robinhood-testnet";

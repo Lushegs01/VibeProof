@@ -1,0 +1,113 @@
+{
+  "step": "bundle",
+  "appUrl": "https://testnet.vibevibe.fun/",
+  "files": 199,
+  "bytes": 5755573,
+  "deployments": [
+    {
+      "key": "v6Graphs.run15",
+      "version": "v6",
+      "chainId": 46630,
+      "factory": "0xe794217880011f9cA6961340eD5c16EC9559Fea0",
+      "bundleDeployBlock": "123503237",
+      "contracts": {
+        "zap": "0x2784448c519D01d3aE257C0aac0b7cDAd8AccEB1",
+        "hook": "0xA5E27E3E54739162fe52C2C48E55B6dd6572e8EC",
+        "locker": "0x7771E60708060c43C8562c4544fBd5c365e549c0",
+        "buyback": "0xC58D6B65424eD5Ea6F88AA5f000C0eFE76F6110A",
+        "pairPolicy": "0x48CFA6c8F3591C6F385652CADf71F310afB2cc84",
+        "poolManager": "0x8366a39CC670B4001A1121B8F6A443A643e40951",
+        "giftLists": "0xb78F181AaBCC62595a1682714894766001d488Be"
+      },
+      "sourceFile": "domain-shared-CzsJjBlE.js"
+    },
+    {
+      "key": "v5Graphs.live",
+      "version": "v5",
+      "chainId": null,
+      "factory": "0x40f1be6faf8DAB9C143cce1a0A04c2075Fb2DF59",
+      "bundleDeployBlock": null,
+      "contracts": {
+        "graduationAdapter": "0xA6a5D4C098dA8f79eae1203A8E42ff9AC7a17F06",
+        "feeHook": "0x2779651feE12F6fB5A187578De6b63709f85d0Cc",
+        "liquidityLocker": "0xc0a2DEEbdc40b7083dC9a067F6992F884Fb6074D",
+        "protocolTreasury": "0x91719A47f855079678b3D5E3af69CDe2b830c5C9",
+        "poolManager": "0x8366a39CC670B4001A1121B8F6A443A643e40951",
+        "multicall3": "0xcA11bde05977b3631167028862bE2a173976CA11",
+        "universalRouter": "0x8876789976dEcBfCbBbe364623C63652db8C0904",
+        "permit2": "0x000000000022D473030F116dDEE9F6B43aC78BA3",
+        "v4Quoter": "0x498928d32bf7649587C4C2D2944038500644c950"
+      },
+      "sourceFile": "domain-shared-CzsJjBlE.js"
+    }
+  ],
+  "errors": [
+    "https://testnet.vibevibe.fun/static-v2/route-prefetch-manifest.js: HTTP 404"
+  ]
+}
+{
+  "step": "rpc",
+  "network": "robinhood-mainnet",
+  "chainId": 4663,
+  "expected": 4663,
+  "ok": true,
+  "head": "78964166"
+}
+{
+  "step": "no_deployments",
+  "network": "robinhood-mainnet",
+  "note": "No vibe/vibe deployment is configured for this network."
+}
+{
+  "step": "rpc",
+  "network": "robinhood-testnet",
+  "chainId": 46630,
+  "expected": 46630,
+  "ok": true,
+  "head": "128060634"
+}
+{
+  "step": "deployment",
+  "network": "robinhood-testnet",
+  "id": "v6-run15",
+  "factory": "0xe794217880011f9cA6961340eD5c16EC9559Fea0",
+  "provenance": "public_app_config+onchain",
+  "bytecodeBytes": 11840,
+  "launchTopics": [
+    "LaunchCreated 0xa7e8032b"
+  ],
+  "latestLaunch": {
+    "block": "128059864",
+    "tx": "0xd09de06d260e60dadf8a3c2b0b45731b5c53e17ed93370ef79e89988c7252b8d",
+    "decoded": true,
+    "token": "0x3B7A0AD5ba7ccDE0B852f2A9e74577c6c5DbC10B",
+    "creator": "0xeA5C2630E00C6454d09B1885B0e48E4796a5627c"
+  },
+  "inCurrentBundle": true,
+  "ok": true
+}
+{
+  "step": "deployment",
+  "network": "robinhood-testnet",
+  "id": "v5-live",
+  "factory": "0x40f1be6faf8DAB9C143cce1a0A04c2075Fb2DF59",
+  "provenance": "public_app_config+onchain",
+  "bytecodeBytes": 24214,
+  "launchTopics": [
+    "TokenLaunched 0x56eef5c3",
+    "TokenLaunchedQuoted 0x34041bc5"
+  ],
+  "latestLaunch": {
+    "block": "127740433",
+    "tx": "0x6cb57bc9ea977a79881a42076d5d5f1b67d6d00a0a1ad760c1fbe3290d2772ea",
+    "decoded": true,
+    "token": "0xcD256f79e75Cb17d954951Fe35959b60c57bbD20",
+    "creator": "0x2563E65717b65fE201e67cBeD2bd42808DA31F0F"
+  },
+  "inCurrentBundle": true,
+  "ok": true
+}
+{
+  "step": "summary",
+  "problems": 0
+}

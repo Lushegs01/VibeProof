@@ -4,7 +4,9 @@ import { useEffect, useState } from "react";
 import { createConfig, http, useConnect, useConnectors, type Connector } from "wagmi";
 import { injected, metaMask, walletConnect } from "wagmi/connectors";
 import { Loader2, Smartphone, Wallet } from "lucide-react";
-import { robinhoodTestnet } from "@/lib/chain/chains";
+import { activeNetwork } from "@/lib/chain/networks";
+
+const chain = activeNetwork().chain;
 
 const wcProjectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID;
 const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://vibeproof.app";
@@ -17,13 +19,13 @@ const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://vibeproof.app";
  *  - walletConnect(): any mobile wallet via QR; only when NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID is set.
  */
 export const wagmiConfig = createConfig({
-  chains: [robinhoodTestnet],
+  chains: [chain],
   connectors: [
     injected(),
     metaMask({ dappMetadata: { name: "VibeProof", url: appUrl } }),
     ...(wcProjectId ? [walletConnect({ projectId: wcProjectId, metadata: { name: "VibeProof", description: "Submit project proof for a vibe/vibe launch", url: appUrl, icons: [] }, showQrModal: true })] : []),
   ],
-  transports: { [robinhoodTestnet.id]: http() },
+  transports: { [chain.id]: http() },
   ssr: true,
 });
 

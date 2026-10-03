@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   bigint,
   boolean,
@@ -16,11 +17,14 @@ import {
 
 /**
  * Conventions
+ *  - Every chain-derived row carries chain_id; mainnet and testnet never share keys.
  *  - Addresses are stored lowercase (varchar 42). Display layer checksums them.
  *  - Token amounts are numeric(78,0) (uint256-safe), never float.
  *  - Nullable metric columns mean "unknown", never zero.
+ *  - Every chain event is identified by (chain_id, tx_hash, log_index).
  */
 const addr = (name: string) => varchar(name, { length: 42 });
+const hash = (name: string) => varchar(name, { length: 66 });
 const uint = (name: string) => numeric(name, { precision: 78, scale: 0 });
 
 export const tokens = pgTable(
@@ -44,9 +48,11 @@ export const tokens = pgTable(
     analysis: jsonb("analysis"),
     analyzedAt: timestamp("analyzed_at", { withTimezone: true }),
     isVibeLaunch: boolean("is_vibe_launch").notNull().default(false),
+    /** Launchpad adapter id that announced this token ("vibe"); null for tokens only seen via analysis. */
+    launchpad: text("launchpad"),
     /**
      * true once the indexer holds this token's COMPLETE event history (from its creation block),
-     * either because it launched after the activity start block or via per-token backfill.
+     * either because it launched after the activity start block or via a completed backfill.
      * Counters are only presented as observed when this is true.
      */
     activityCovered: boolean("activity_covered").notNull().default(false),
@@ -59,6 +65,11 @@ export const tokens = pgTable(
     uniqueSellers: integer("unique_sellers"),
     volumeWei: uint("volume_wei"),
     lastActivityAt: timestamp("last_activity_at", { withTimezone: true }),
+    /** ERC-20 view reads at launch indexing: "ok" | "partial" (some calls reverted) | "error" (RPC failed; retried). */
+    tokenMetaStatus: text("token_meta_status"),
+    tokenMetaError: text("token_meta_error"),
+    tokenMetaBlock: bigint("token_meta_block", { mode: "bigint" }),
+    tokenMetaAttempts: integer("token_meta_attempts").notNull().default(0),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
@@ -66,6 +77,13 @@ export const tokens = pgTable(
     index("tokens_creator_idx").on(t.creatorAddress),
     index("tokens_symbol_idx").on(t.symbol),
     index("tokens_created_idx").on(t.createdAt),
+    index("tokens_chain_created_idx").on(t.chainId, t.createdAt),
+    index("tokens_chain_symbol_lower_idx").using("btree", t.chainId, sql`lower(${t.symbol}) text_pattern_ops`),
+    index("tokens_chain_name_lower_idx").using("btree", t.chainId, sql`lower(${t.name}) text_pattern_ops`),
+    index("tokens_chain_holders_idx").on(t.chainId, t.holderCount),
+    index("tokens_chain_transfers_idx").on(t.chainId, t.transferCount),
+    index("tokens_chain_active_idx").on(t.chainId, t.lastActivityAt),
+    index("tokens_meta_status_idx").on(t.chainId, t.tokenMetaStatus),
   ],
 );
 
@@ -93,14 +111,26 @@ export const launches = pgTable(
     creatorAddress: addr("creator_address").notNull(),
     factoryAddress: addr("factory_address").notNull(),
     deploymentId: text("deployment_id").notNull(),
+    launchpad: text("launchpad").notNull().default("vibe"),
+    version: text("version"),
+    eventName: text("event_name"),
     launchId: uint("launch_id"),
     curveAddress: addr("curve_address"),
     pairCurrency: addr("pair_currency"),
     txHash: varchar("tx_hash", { length: 66 }).notNull(),
     blockNumber: bigint("block_number", { mode: "bigint" }).notNull(),
+    blockHash: hash("block_hash"),
+    logIndex: integer("log_index"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+    /** false when created_at was interpolated between block headers (see indexer/timestamps.ts). */
+    createdAtExact: boolean("created_at_exact"),
+    /** Onchain commitment to the metadata bytes (v5: keccak256), when the launch event carries one. */
+    metadataDigest: hash("metadata_digest"),
     graduatedAt: timestamp("graduated_at", { withTimezone: true }),
-    /** "bonding" | "graduated" | "unknown" — only set from observed events. */
+    graduatedTx: hash("graduated_tx"),
+    graduatedBlock: bigint("graduated_block", { mode: "bigint" }),
+    curveCompletedAt: timestamp("curve_completed_at", { withTimezone: true }),
+    /** "bonding" | "curve_completed" | "graduated" — only set from observed curve events. */
     status: text("status").notNull().default("bonding"),
     raw: jsonb("raw"),
   },
@@ -109,6 +139,11 @@ export const launches = pgTable(
     index("launches_creator_idx").on(t.creatorAddress),
     index("launches_curve_idx").on(t.curveAddress),
     index("launches_created_idx").on(t.createdAt),
+    index("launches_chain_creator_idx").on(t.chainId, t.creatorAddress),
+    index("launches_chain_curve_idx").on(t.chainId, t.curveAddress),
+    index("launches_chain_tx_idx").on(t.chainId, t.txHash),
+    index("launches_chain_block_idx").on(t.chainId, t.blockNumber),
+    index("launches_chain_status_idx").on(t.chainId, t.status, t.graduatedAt),
   ],
 );
 
@@ -122,7 +157,11 @@ export const holders = pgTable(
     firstSeenAt: timestamp("first_seen_at", { withTimezone: true }).notNull(),
     lastUpdatedAt: timestamp("last_updated_at", { withTimezone: true }).notNull(),
   },
-  (t) => [primaryKey({ columns: [t.chainId, t.tokenAddress, t.walletAddress] }), index("holders_wallet_idx").on(t.walletAddress)],
+  (t) => [
+    primaryKey({ columns: [t.chainId, t.tokenAddress, t.walletAddress] }),
+    index("holders_wallet_idx").on(t.walletAddress),
+    index("holders_token_balance_idx").on(t.chainId, t.tokenAddress, t.balance),
+  ],
 );
 
 export const transactionEvents = pgTable(
@@ -133,12 +172,17 @@ export const transactionEvents = pgTable(
     txHash: varchar("tx_hash", { length: 66 }).notNull(),
     logIndex: integer("log_index").notNull(),
     blockNumber: bigint("block_number", { mode: "bigint" }).notNull(),
+    blockHash: hash("block_hash"),
     timestamp: timestamp("timestamp", { withTimezone: true }).notNull(),
+    /** false = interpolated between block headers; null = recorded before this was tracked. */
+    timestampExact: boolean("timestamp_exact"),
     tokenAddress: addr("token_address").notNull(),
     walletAddress: addr("wallet_address"),
     counterparty: addr("counterparty"),
-    /** "launch" | "transfer" | "buy" | "sell" | "graduation" */
+    /** "transfer" | "buy" | "sell" | "graduation" | "curve_completed" */
     eventType: text("event_type").notNull(),
+    /** Source event name (e.g. "CurveBuy", "Bought", "Transfer"). */
+    eventName: text("event_name"),
     amount: uint("amount"),
     /** Native / pair-currency amount for buys & sells. */
     quoteAmount: uint("quote_amount"),
@@ -148,6 +192,9 @@ export const transactionEvents = pgTable(
     index("tx_events_token_time_idx").on(t.tokenAddress, t.timestamp),
     index("tx_events_wallet_idx").on(t.walletAddress),
     index("tx_events_time_idx").on(t.timestamp),
+    index("tx_events_chain_token_block_idx").on(t.chainId, t.tokenAddress, t.blockNumber, t.logIndex),
+    index("tx_events_chain_block_idx").on(t.chainId, t.blockNumber),
+    index("tx_events_chain_type_time_idx").on(t.chainId, t.eventType, t.timestamp),
   ],
 );
 
@@ -181,7 +228,7 @@ export const verificationChecks = pgTable(
     id: serial("id").primaryKey(),
     chainId: integer("chain_id").notNull(),
     tokenAddress: addr("token_address").notNull(),
-    /** "website" | "github" | "demo" | "docs" | ... */
+    /** "website" | "github" | "demo" | "docs" | ... ; "metadata_*" for links claimed in launch metadata. */
     checkType: text("check_type").notNull(),
     /** VerificationState */
     status: text("status").notNull(),
@@ -211,7 +258,7 @@ export const activitySnapshots = pgTable(
   (t) => [index("snapshots_token_time_idx").on(t.tokenAddress, t.timestamp)],
 );
 
-/** Ecosystem-wide event feed (derived). */
+/** Ecosystem-wide event feed (derived). Trades are read straight from transaction_events. */
 export const feedEvents = pgTable(
   "feed_events",
   {
@@ -221,27 +268,132 @@ export const feedEvents = pgTable(
     kind: text("kind").notNull(),
     message: text("message").notNull(),
     txHash: varchar("tx_hash", { length: 66 }),
+    /** Block of the underlying event (null for off-chain events such as proof submissions). Used for reorg rollback. */
+    blockNumber: bigint("block_number", { mode: "bigint" }),
     data: jsonb("data"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("feed_time_idx").on(t.createdAt), uniqueIndex("feed_dedupe_uq").on(t.chainId, t.kind, t.tokenAddress, t.txHash)],
+  (t) => [
+    index("feed_time_idx").on(t.createdAt),
+    uniqueIndex("feed_dedupe_uq").on(t.chainId, t.kind, t.tokenAddress, t.txHash),
+    index("feed_chain_time_idx").on(t.chainId, t.createdAt),
+    index("feed_chain_block_idx").on(t.chainId, t.blockNumber),
+  ],
 );
 
+/** Cursors. Keys always embed the chain id (e.g. `activity:46630`, `launches:46630:v6-run15`). */
 export const indexerState = pgTable("indexer_state", {
   key: text("key").primaryKey(),
   lastBlock: bigint("last_block", { mode: "bigint" }).notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
-/** Tokens launched before the activity start block, queued for a full per-token backfill. */
-export const backfillQueue = pgTable("backfill_queue", {
-  chainId: integer("chain_id").notNull(),
-  tokenAddress: addr("token_address").notNull(),
-  requestedAt: timestamp("requested_at", { withTimezone: true }).notNull().defaultNow(),
+/**
+ * Block headers seen by the indexer: reorg checkpoints (the hash of every committed range end)
+ * and a persistent timestamp-anchor cache, so serverless runs do not refetch headers.
+ */
+export const chainBlocks = pgTable(
+  "chain_blocks",
+  {
+    chainId: integer("chain_id").notNull(),
+    blockNumber: bigint("block_number", { mode: "bigint" }).notNull(),
+    blockHash: hash("block_hash").notNull(),
+    parentHash: hash("parent_hash").notNull(),
+    timestamp: timestamp("timestamp", { withTimezone: true }).notNull(),
+    /** true = end of a committed indexing range (used for reorg detection). */
+    checkpoint: boolean("checkpoint").notNull().default(false),
+    observedAt: timestamp("observed_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.chainId, t.blockNumber] }), index("chain_blocks_checkpoint_idx").on(t.chainId, t.checkpoint, t.blockNumber)],
+);
+
+/**
+ * Historical activity backfill queue (one row per token).
+ * status: pending → started → completed | failed (retried with backoff) → dead (after max attempts).
+ */
+export const backfillQueue = pgTable(
+  "backfill_queue",
+  {
+    chainId: integer("chain_id").notNull(),
+    tokenAddress: addr("token_address").notNull(),
+    status: text("status").notNull().default("pending"),
+    /** "bootstrap" (automatic historical sync) | "on_demand" (passport viewed) | "manual" */
+    reason: text("reason"),
+    priority: integer("priority").notNull().default(0),
+    launchBlock: bigint("launch_block", { mode: "bigint" }),
+    attempts: integer("attempts").notNull().default(0),
+    nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true }),
+    requestedAt: timestamp("requested_at", { withTimezone: true }).notNull().defaultNow(),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    lockedBy: text("locked_by"),
+    doneAt: timestamp("done_at", { withTimezone: true }),
+    /** Activity cursor the backfill covered up to (the tail continues from there). */
+    throughBlock: bigint("through_block", { mode: "bigint" }),
+    /** Last error message (redacted). */
+    error: text("error"),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.chainId, t.tokenAddress] }), index("backfill_claim_idx").on(t.chainId, t.status, t.priority, t.launchBlock)],
+);
+
+/**
+ * Launch metadata fetched from the URI in the launch event. Contents are CREATOR CLAIMS:
+ * `cid_verified`/`digest_match` only prove the bytes are the ones committed to, not that
+ * anything they say is true.
+ */
+export const tokenMetadata = pgTable(
+  "token_metadata",
+  {
+    chainId: integer("chain_id").notNull(),
+    tokenAddress: addr("token_address").notNull(),
+    uri: text("uri").notNull(),
+    /** "pending" | "ok" | "not_json" | "invalid" | "too_large" | "unavailable" | "not_found" | "blocked" | "unsupported_uri" | "integrity_mismatch" */
+    status: text("status").notNull().default("pending"),
+    priority: integer("priority").notNull().default(0),
+    normalizedUrl: text("normalized_url"),
+    gateway: text("gateway"),
+    httpStatus: integer("http_status"),
+    contentType: text("content_type"),
+    bytes: integer("bytes"),
+    keccak256: hash("keccak256"),
+    sha256: hash("sha256"),
+    /** Bytes hash to the CID in the URI (raw-codec sha2-256 CIDs only). null = not checkable. */
+    cidVerified: boolean("cid_verified"),
+    onchainDigest: hash("onchain_digest"),
+    /** keccak256(bytes) equals the digest in the launch event. null = no onchain digest. */
+    digestMatch: boolean("digest_match"),
+    data: jsonb("data"),
+    error: text("error"),
+    attempts: integer("attempts").notNull().default(0),
+    nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true }),
+    fetchedAt: timestamp("fetched_at", { withTimezone: true }),
+    enrichedAt: timestamp("enriched_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.chainId, t.tokenAddress] }), index("token_metadata_queue_idx").on(t.chainId, t.status, t.priority, t.nextAttemptAt)],
+);
+
+/** Indexer heartbeat per chain, readable by /api/health from any process. */
+export const indexerStatus = pgTable("indexer_status", {
+  chainId: integer("chain_id").primaryKey(),
+  network: text("network").notNull(),
+  /** "running" | "idle" | "error" */
+  state: text("state").notNull(),
   startedAt: timestamp("started_at", { withTimezone: true }),
-  doneAt: timestamp("done_at", { withTimezone: true }),
-  error: text("error"),
-}, (t) => [primaryKey({ columns: [t.chainId, t.tokenAddress] })]);
+  lastTickAt: timestamp("last_tick_at", { withTimezone: true }),
+  lastSuccessAt: timestamp("last_success_at", { withTimezone: true }),
+  lastLaunchDiscoveryAt: timestamp("last_launch_discovery_at", { withTimezone: true }),
+  lastActivityAt: timestamp("last_activity_at", { withTimezone: true }),
+  lastBackfillAt: timestamp("last_backfill_at", { withTimezone: true }),
+  lastReorgAt: timestamp("last_reorg_at", { withTimezone: true }),
+  headBlock: bigint("head_block", { mode: "bigint" }),
+  lastError: text("last_error"),
+  lastErrorAt: timestamp("last_error_at", { withTimezone: true }),
+  provider: jsonb("provider"),
+  stats: jsonb("stats"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
 
 export const shareLinks = pgTable(
   "share_links",

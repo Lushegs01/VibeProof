@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { tokenPath } from "@/lib/chain/networks";
 import { useEffect, useState } from "react";
 import { X } from "lucide-react";
 import { readWatchlist, writeWatchlist } from "@/components/passport/client-bits";
@@ -47,7 +48,7 @@ export function WatchlistView() {
         return (
           <li key={w.address} className="rounded-[20px] border border-line bg-surface/50 bg-surface p-4">
             <div className="flex items-start justify-between gap-2">
-              <Link href={`/token/robinhood-testnet/${w.address}`} onClick={() => markChecked(w.address)} className="text-lg font-medium hover:underline">
+              <Link href={tokenPath(w.address)} onClick={() => markChecked(w.address)} className="text-lg font-medium hover:underline">
                 {w.symbol ? `$${w.symbol}` : shortAddress(w.address)}
               </Link>
               <button type="button" onClick={() => remove(w.address)} aria-label={`Stop watching ${w.symbol ?? w.address}`} className="rounded p-1 text-fg-2 hover:text-fg">

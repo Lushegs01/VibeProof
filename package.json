@@ -19,6 +19,8 @@
     "indexer": "tsx src/indexer/run.ts",
     "indexer:once": "tsx src/indexer/run.ts --once",
     "indexer:recount": "tsx src/indexer/run.ts --recount",
+    "indexer:bootstrap": "tsx src/indexer/run.ts --bootstrap",
+    "vibe:verify": "tsx src/indexer/verify-deployments.ts",
     "forge:build": "forge build",
     "forge:test": "forge test -vv",
     "deploy:testnet": "forge script script/DeployVibeProofRegistry.s.sol:DeployVibeProofRegistry --rpc-url robinhood_testnet --broadcast --account ${DEPLOYER_ACCOUNT:-vibeproof-deployer}",

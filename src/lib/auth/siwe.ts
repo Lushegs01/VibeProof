@@ -1,6 +1,7 @@
 import { parseSiweMessage, validateSiweMessage } from "viem/siwe";
 import { createPublicClient, getAddress, http, verifyMessage, type Address, type Hex } from "viem";
 import { getChainConfig } from "../chain/chains";
+import { activeNetwork } from "../chain/networks";
 import { consumeNonce } from "./session";
 
 export type SiweVerifyResult = { ok: true; address: Address } | { ok: false; reason: string };
@@ -15,7 +16,7 @@ export async function verifySiwe(message: string, signature: Hex, expectedDomain
   if (message.length > 4096) return { ok: false, reason: "Message too long" };
   const parsed = parseSiweMessage(message);
   if (!parsed.address || !parsed.nonce || !parsed.domain) return { ok: false, reason: "Malformed SIWE message" };
-  if (parsed.chainId !== 46630) return { ok: false, reason: "Wrong chain id" };
+  if (parsed.chainId !== activeNetwork().chainId) return { ok: false, reason: "Wrong chain id" };
   if (!validateSiweMessage({ message: parsed, domain: expectedDomain, time: now })) return { ok: false, reason: "Domain, time window or format invalid" };
   const address = getAddress(parsed.address);
   let valid = false;

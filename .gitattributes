@@ -1,0 +1,2 @@
+# Exact bytes: the file's sha256 is checked against its IPFS CID in tests.
+tests/fixtures/metadata-*.json -text

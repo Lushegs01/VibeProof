@@ -83,7 +83,7 @@ describe.runIf(process.env.SKIP_DB_TESTS !== "1")("indexer → Postgres", () => 
   it("indexes launches, tail activity, holders and counters", async () => {
     if (!reachable) return;
     const db = mods.getDb()!;
-    const idx = new mods.VibeIndexer(p as never, db, { initialBackfillBlocks: 500n, snapshotEveryMs: 0 }, [{ ...mods.VIBE_DEPLOYMENTS[0], factory: FACTORY, deployBlock: 1n }]);
+    const idx = new mods.VibeIndexer(p as never, db, { initialBackfillBlocks: 500n, snapshotEveryMs: 0, confirmations: 0n, historicalBackfill: false, metadata: false, analyzePerTick: 0 }, [{ ...mods.VIBE_DEPLOYMENTS[0], factory: FACTORY, startBlock: 1n }]);
     const r = await idx.tick();
     expect(r.newLaunches).toBe(2);
     expect(r.activityThrough).toBe(1000n);
@@ -118,7 +118,7 @@ describe.runIf(process.env.SKIP_DB_TESTS !== "1")("indexer → Postgres", () => 
     const { tokens, indexerState } = mods.schema;
     const { eq } = mods.drizzle;
     await db.update(indexerState).set({ lastBlock: 500n }).where(eq(indexerState.key, "activity:46630"));
-    const idx = new mods.VibeIndexer(p as never, db, { snapshotEveryMs: 0 }, [{ ...mods.VIBE_DEPLOYMENTS[0], factory: FACTORY, deployBlock: 1n }]);
+    const idx = new mods.VibeIndexer(p as never, db, { snapshotEveryMs: 0, confirmations: 0n, historicalBackfill: false, metadata: false, analyzePerTick: 0 }, [{ ...mods.VIBE_DEPLOYMENTS[0], factory: FACTORY, startBlock: 1n }]);
     await idx.tick();
     const [tNew] = await db.select().from(tokens).where(eq(tokens.address, TOKEN_NEW.toLowerCase()));
     expect(tNew.transferCount).toBe(5);
@@ -130,7 +130,7 @@ describe.runIf(process.env.SKIP_DB_TESTS !== "1")("indexer → Postgres", () => 
     const db = mods.getDb()!;
     const { tokens, holders } = mods.schema;
     const { eq, and } = mods.drizzle;
-    const idx = new mods.VibeIndexer(p as never, db, { snapshotEveryMs: 0 }, [{ ...mods.VIBE_DEPLOYMENTS[0], factory: FACTORY, deployBlock: 1n }]);
+    const idx = new mods.VibeIndexer(p as never, db, { snapshotEveryMs: 0, confirmations: 0n, historicalBackfill: false, metadata: false, analyzePerTick: 0 }, [{ ...mods.VIBE_DEPLOYMENTS[0], factory: FACTORY, startBlock: 1n }]);
     await idx.enqueueBackfill(TOKEN_OLD);
     await idx.tick();
     const [tOld] = await db.select().from(tokens).where(eq(tokens.address, TOKEN_OLD.toLowerCase()));

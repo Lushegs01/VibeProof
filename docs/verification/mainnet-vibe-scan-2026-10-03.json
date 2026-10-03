@@ -1,0 +1,19 @@
+{
+  "description": "Full-history scan of Robinhood Chain mainnet for vibe/vibe launch event topics (topic-only eth_getLogs, 30k-block windows, public RPC).",
+  "observedAt": "2026-10-03",
+  "rpc": "https://rpc.mainnet.chain.robinhood.com",
+  "chainId": 4663,
+  "fromBlock": 0,
+  "toBlock": 78940315,
+  "windowBlocks": 30000,
+  "requests": 2632,
+  "failedRanges": 0,
+  "retriesAfter429OrTimeout": 1615,
+  "durationSeconds": 616,
+  "topics": {
+    "LaunchCreated": "0xa7e8032bfd07a9fbcde50eabe91eb2901faee6dbddd9cced579491d9b07ef5c8",
+    "TokenLaunched": "0x56eef5c350583250e71791d6d659f4d181796c9deb08b977252efc3995aa9279",
+    "TokenLaunchedQuoted": "0x34041bc557672fe6a73853ece671e7715108f75e25427bfddf3e2f8e2085a0e7"
+  },
+  "logsFound": 0
+}

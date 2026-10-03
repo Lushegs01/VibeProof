@@ -1,13 +1,14 @@
-import { and, desc, eq, ilike, or, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { getAddress } from "viem";
 import { getProvider } from "../chain/provider";
+import { explorerLink, tokenPath, type NetworkSlug } from "../chain/networks";
 import { getDb, schema } from "../db/client";
 import { isDemoMode } from "../demo/mode";
 import { DEMO_CREATORS, DEMO_TOKENS } from "../demo/data";
 import { isTxHash, parseAddress } from "../util/address";
+import { serviceNetwork } from "./network";
 
 const { tokens, creators, transactionEvents, launches } = schema;
-const CHAIN_ID = 46630;
 
 export type SearchResult =
   | { kind: "token"; address: string; name: string | null; symbol: string | null; isVibeLaunch: boolean; href: string }
@@ -27,23 +28,33 @@ export function classifyQuery(q: string): QueryKind {
   return "text";
 }
 
-const tokenHref = (a: string) => `/token/robinhood-testnet/${getAddress(a)}`;
+/** LIKE pattern from user input: wildcards escaped, length capped. */
+export function likeSafe(term: string) {
+  return term.replace(/[%_\\]/g, (m) => `\\${m}`).slice(0, 40);
+}
 
-export async function search(q: string): Promise<SearchResult[]> {
+/**
+ * Search indexed data of ONE network (never demo fixtures unless demo mode is on).
+ * Supports contract address, $SYMBOL, symbol/name text, creator wallet and transaction hash.
+ */
+export async function search(q: string, network?: NetworkSlug | string | null): Promise<SearchResult[]> {
   const kind = classifyQuery(q);
   const s = q.trim();
   if (kind === "empty") return [];
   if (isDemoMode()) return demoSearch(s, kind);
+  const net = serviceNetwork(network);
+  const c = net.chainId;
+  const href = (a: string) => tokenPath(getAddress(a), net.slug);
   const db = getDb();
 
   if (kind === "tx") {
     const hash = s.toLowerCase();
-    const ev = db ? await db.query.transactionEvents.findFirst({ where: eq(transactionEvents.txHash, hash) }) : undefined;
-    const launch = db && !ev ? await db.query.launches.findFirst({ where: eq(launches.txHash, hash) }) : undefined;
+    const ev = db ? await db.query.transactionEvents.findFirst({ where: and(eq(transactionEvents.chainId, c), eq(transactionEvents.txHash, hash)) }) : undefined;
+    const launch = db && !ev ? await db.query.launches.findFirst({ where: and(eq(launches.chainId, c), eq(launches.txHash, hash)) }) : undefined;
     const token = ev?.tokenAddress ?? launch?.tokenAddress ?? null;
-    if (token) return [{ kind: "transaction", hash, token: getAddress(token), href: tokenHref(token) }];
-    const tx = await getProvider().getTransaction(s as `0x${string}`);
-    return tx ? [{ kind: "transaction", hash, token: null, href: `https://explorer.testnet.chain.robinhood.com/tx/${hash}` }] : [];
+    if (token) return [{ kind: "transaction", hash, token: getAddress(token), href: href(token) }];
+    const tx = await getProvider(net.slug).getTransaction(s as `0x${string}`);
+    return tx ? [{ kind: "transaction", hash, token: null, href: explorerLink("tx", hash, net.slug) }] : [];
   }
 
   if (kind === "address") {
@@ -51,36 +62,39 @@ export async function search(q: string): Promise<SearchResult[]> {
     const a = addr.toLowerCase();
     const out: SearchResult[] = [];
     if (db) {
-      const [t, c] = await Promise.all([
-        db.query.tokens.findFirst({ where: and(eq(tokens.chainId, CHAIN_ID), eq(tokens.address, a)) }),
-        db.query.creators.findFirst({ where: and(eq(creators.chainId, CHAIN_ID), eq(creators.address, a)) }),
+      const [t, cr] = await Promise.all([
+        db.query.tokens.findFirst({ where: and(eq(tokens.chainId, c), eq(tokens.address, a)) }),
+        db.query.creators.findFirst({ where: and(eq(creators.chainId, c), eq(creators.address, a)) }),
       ]);
-      if (t) out.push({ kind: "token", address: addr, name: t.name, symbol: t.symbol, isVibeLaunch: t.isVibeLaunch, href: tokenHref(a) });
-      if (c) out.push({ kind: "creator", address: addr, launchCount: c.launchCount, href: `/creator/${addr}` });
+      if (t) out.push({ kind: "token", address: addr, name: t.name, symbol: t.symbol, isVibeLaunch: t.isVibeLaunch, href: href(a) });
+      if (cr) out.push({ kind: "creator", address: addr, launchCount: cr.launchCount, href: `/creator/${addr}` });
     }
     if (!out.length) {
-      const code = await getProvider().getBytecode(addr);
-      out.push(code && code !== "0x" ? { kind: "token", address: addr, name: null, symbol: null, isVibeLaunch: false, href: tokenHref(a) } : { kind: "wallet", address: addr, href: `/creator/${addr}` });
+      const code = await getProvider(net.slug).getBytecode(addr);
+      out.push(code && code !== "0x" ? { kind: "token", address: addr, name: null, symbol: null, isVibeLaunch: false, href: href(a) } : { kind: "wallet", address: addr, href: `/creator/${addr}` });
     }
     return out;
   }
 
   if (!db) return [];
-  const term = kind === "symbol" ? s.slice(1) : s;
-  const safe = term.replace(/[%_\\]/g, (m) => `\\${m}`).slice(0, 40);
+  const term = (kind === "symbol" ? s.slice(1) : s).toLowerCase();
+  const safe = likeSafe(term);
+  // lower(...) LIKE 'x%' uses the (chain_id, lower(col) text_pattern_ops) indexes; name substring
+  // matches fall back to a scan bounded by chain_id and LIMIT.
+  const match = kind === "symbol" ? sql`lower(${tokens.symbol}) = ${term.slice(0, 40)}` : sql`(lower(${tokens.symbol}) like ${`${safe}%`} or lower(${tokens.name}) like ${`${safe}%`} or lower(${tokens.name}) like ${`%${safe}%`})`;
   const rows = await db
     .select()
     .from(tokens)
-    .where(and(eq(tokens.chainId, CHAIN_ID), kind === "symbol" ? ilike(tokens.symbol, safe) : or(ilike(tokens.symbol, `${safe}%`), ilike(tokens.name, `%${safe}%`))))
-    .orderBy(sql`${tokens.symbol} ilike ${safe} desc`, desc(tokens.holderCount), desc(tokens.createdAt))
+    .where(and(eq(tokens.chainId, c), match))
+    .orderBy(sql`lower(${tokens.symbol}) = ${term} desc`, sql`${tokens.isVibeLaunch} desc`, sql`${tokens.holderCount} desc nulls last`, desc(tokens.createdAt))
     .limit(12);
-  return rows.map((t) => ({ kind: "token" as const, address: getAddress(t.address), name: t.name, symbol: t.symbol, isVibeLaunch: t.isVibeLaunch, href: tokenHref(t.address) }));
+  return rows.map((t) => ({ kind: "token" as const, address: getAddress(t.address), name: t.name, symbol: t.symbol, isVibeLaunch: t.isVibeLaunch, href: href(t.address) }));
 }
 
 function demoSearch(s: string, kind: QueryKind): SearchResult[] {
   const l = s.toLowerCase().replace(/^\$/, "");
   const toks = DEMO_TOKENS.filter((t) => t.addr.toLowerCase() === l || t.symbol.toLowerCase().startsWith(l) || t.name.toLowerCase().includes(l));
-  const out: SearchResult[] = toks.map((t) => ({ kind: "token", address: t.addr, name: t.name, symbol: t.symbol, isVibeLaunch: true, href: tokenHref(t.addr) }));
+  const out: SearchResult[] = toks.map((t) => ({ kind: "token", address: t.addr, name: t.name, symbol: t.symbol, isVibeLaunch: true, href: `/token/robinhood-testnet/${t.addr}` }));
   if (kind === "address") {
     const c = DEMO_CREATORS.find((x) => x.toLowerCase() === l);
     if (c) out.push({ kind: "creator", address: c, launchCount: DEMO_TOKENS.filter((t) => t.creator === c).length, href: `/creator/${c}` });
