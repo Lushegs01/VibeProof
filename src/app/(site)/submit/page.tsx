@@ -12,7 +12,7 @@ export default async function SubmitPage({ searchParams }: { searchParams: Promi
   if (!Number.isSafeInteger(confirmations) || confirmations < 1) throw new Error("Invalid proof confirmation policy");
   return (
     <div className="mx-auto max-w-2xl px-4 pt-10 md:px-6 md:pt-14">
-      <p className="label">Creator</p>
+      <p className="edition-label">Creator · Leave a paper trail</p>
       <h1 className="text-gradient mt-3 text-4xl font-medium leading-tight md:text-5xl">Verify your project</h1>
       <p className="mt-3 text-fg-2">
         Link the things that exist behind your token. VibeProof checks what it can independently observe and labels everything else as your claim. Only the

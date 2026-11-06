@@ -51,7 +51,7 @@ export default async function CreatorPage({ params, searchParams }: Props) {
         <div className="mt-4 flex items-center gap-3">
           <Address value={creator.address} short={false} className="text-base md:text-xl" />
         </div>
-        <dl className="mt-8 grid grid-cols-2 gap-px overflow-hidden rounded-[20px] border border-[#5cc6ea2e] bg-[#5cc6ea1f] sm:grid-cols-5">
+        <dl className="mt-8 grid grid-cols-2 gap-px overflow-hidden rounded-[20px] border border-accent/20 bg-accent-dim sm:grid-cols-5">
           {[
             ["First observed", creator.firstSeenAt ? timeAgo(creator.firstSeenAt) : "—", creator.firstSeenAt ? formatUtc(creator.firstSeenAt) : ""],
             ["Launches", formatInt(creator.launchCount), creator.definitions.launches],

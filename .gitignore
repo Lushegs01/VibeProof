@@ -19,3 +19,5 @@ dump.rdb
 broadcast/**/run-[0-9]*.json
 
 .next-wallet/
+
+.next-haunt/

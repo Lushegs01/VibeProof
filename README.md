@@ -2,6 +2,8 @@
 
 **Know what was launched.** The verification layer for vibe/vibe launches on Robinhood Chain.
 
+The **Haunt the Chain Halloween edition** adds an ember-and-parchment theme, an original ghost-and-pumpkin illustration, reduced-motion support and matching social cards. [Visual implementation notes](docs/engineering/HALLOWEEN.md).
+
 vibe/vibe makes launching easy. VibeProof makes launches understandable. Every launch gets a **Launch Passport** at `/token/robinhood-testnet/0x…` that combines four evidence layers:
 
 | Layer | What it answers | Source |

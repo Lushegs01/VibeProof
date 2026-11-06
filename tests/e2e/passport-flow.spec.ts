@@ -6,7 +6,7 @@ test.describe("core flow: search → passport → contract → creator → produ
   test("a new user can inspect a launch end to end", async ({ page, context, isMobile }) => {
     await context.grantPermissions(["clipboard-read", "clipboard-write"]).catch(() => {});
     await page.goto("/");
-    await expect(page.getByRole("heading", { level: 1 })).toContainText("Know what was launched on Robinhood Chain");
+    await expect(page.getByRole("heading", { level: 1 })).toContainText("Proof over ghost stories.");
     await expect(page.getByText("Demo data · deterministic fixtures", { exact: false }).first()).toBeVisible();
 
     // Search

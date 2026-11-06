@@ -2,29 +2,27 @@
 @import "@fontsource-variable/unbounded";
 @import "@fontsource-variable/plus-jakarta-sans";
 
-/*
- * VibeProof design tokens: "deep space / horizon glow".
- * Near-black navy canvas, ice-to-cyan gradients, glass navy cards, pill controls.
- * State colours stay distinct and are never used decoratively.
- */
+/* Haunt the Chain: midnight plum, parchment, ember and a little spectral green.
+ * Evidence states keep their own labelled semantic colours. */
 @theme {
-  --color-bg: #000305;
-  --color-bg-2: #010812;
-  --color-surface: #061019;
-  --color-surface-2: #0a1824;
-  --color-surface-3: #0f2232;
-  --color-line: #10283a;
-  --color-line-strong: #1c4560;
-  --color-fg: #eef6f8;
-  --color-fg-2: #93b2b6;
-  --color-muted: #587a82;
-  --color-ice: #d3e3e6;
-  --color-accent: #5cc6ea;
-  --color-accent-deep: #0b65a3;
-  --color-accent-dim: #5cc6ea1f;
-  --color-observed: #b7d3dc;
-  --color-claimed: #e8d9a8;
-  --color-attention: #f0b8a0;
+  --color-bg: #100d16;
+  --color-bg-2: #15101d;
+  --color-surface: #1c1526;
+  --color-surface-2: #251c31;
+  --color-surface-3: #32243e;
+  --color-line: #34283f;
+  --color-line-strong: #5a4268;
+  --color-fg: #fff1db;
+  --color-fg-2: #c0b0ca;
+  --color-muted: #a28eae;
+  --color-ice: #f6dcbc;
+  --color-accent: #ffa263;
+  --color-accent-deep: #c25d34;
+  --color-accent-dim: #ffa2631f;
+  --color-observed: #b0dfcd;
+  --color-claimed: #d1b4f3;
+  --color-attention: #f3cf86;
+  --color-spectral: #c1da96;
 
   --font-display: "Unbounded Variable", ui-sans-serif, system-ui, sans-serif;
   --font-sans: "Plus Jakarta Sans Variable", ui-sans-serif, system-ui, sans-serif;
@@ -36,18 +34,24 @@
 
   --animate-pulse-dot: pulse-dot 2.4s ease-in-out infinite;
   @keyframes pulse-dot {
-    0%, 100% { opacity: 1; transform: scale(1); }
-    50% { opacity: .35; transform: scale(.85); }
+    0%,
+    100% {
+      opacity: 1;
+      transform: scale(1);
+    }
+    50% {
+      opacity: 0.35;
+      transform: scale(0.85);
+    }
   }
   --animate-shimmer: shimmer 1.6s linear infinite;
   @keyframes shimmer {
-    from { background-position: -200% 0; }
-    to { background-position: 200% 0; }
-  }
-  --animate-horizon: horizon 7s ease-in-out infinite;
-  @keyframes horizon {
-    0%, 100% { opacity: .9; }
-    50% { opacity: 1; }
+    from {
+      background-position: -200% 0;
+    }
+    to {
+      background-position: 200% 0;
+    }
   }
 }
 
@@ -55,7 +59,8 @@
   color-scheme: dark;
 }
 
-html, body {
+html,
+body {
   background: var(--color-bg);
   color: var(--color-fg);
 }
@@ -66,12 +71,17 @@ body {
   text-rendering: optimizeLegibility;
 }
 
-h1, h2, h3, .font-display {
+h1,
+h2,
+h3,
+.font-display {
   font-family: var(--font-display);
   letter-spacing: -0.02em;
 }
 
-::selection { background: #5cc6ea40; }
+::selection {
+  background: #ffa26340;
+}
 
 :focus-visible {
   outline: 1.5px solid var(--color-accent);
@@ -79,160 +89,133 @@ h1, h2, h3, .font-display {
   border-radius: 6px;
 }
 
-.tabular { font-variant-numeric: tabular-nums; }
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
 
 /* Small data labels (tables, metrics, provenance) stay technical. */
 .label {
   font-family: var(--font-mono);
   font-size: 11px;
-  letter-spacing: .08em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--color-fg-2);
 }
 
 @layer components {
-/* Ice → cyan headline gradient. */
-.text-gradient {
-  background: linear-gradient(100deg, #d3e3e6 0%, #b5dbe6 35%, #6cc4e2 75%, #3aa3d0 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
-.text-gradient-soft {
-  background: linear-gradient(100deg, #93b2b6 0%, #d3e3e6 50%, #93cfe0 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
-
-/* Pill buttons */
-.btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: .5rem;
-  border-radius: 9999px;
-  font-weight: 600;
-  font-size: .9rem;
-  line-height: 1;
-  transition: transform .15s ease, box-shadow .2s ease, background-color .2s ease, border-color .2s ease, opacity .2s;
-  white-space: nowrap;
-}
-.btn:disabled { opacity: .4; cursor: not-allowed; }
-.btn-primary {
-  color: #00131c;
-  background: linear-gradient(180deg, #9be2f6 0%, #5cc6ea 55%, #3aa7d6 100%);
-  box-shadow: inset 0 1px 0 #ffffff80, 0 0 0 1px #5cc6ea55, 0 8px 28px -8px #2fb3e899;
-}
-.btn-primary:hover:not(:disabled) { box-shadow: inset 0 1px 0 #ffffff99, 0 0 0 1px #8fdcf3, 0 10px 36px -6px #2fb3e8cc; transform: translateY(-1px); }
-.btn-outline {
-  color: var(--color-fg);
-  border: 1px solid #5cc6ea66;
-  background: #5cc6ea0d;
-}
-.btn-outline:hover:not(:disabled) { border-color: #5cc6eacc; background: #5cc6ea1f; }
-.btn-ghost { color: var(--color-fg-2); }
-.btn-ghost:hover { color: var(--color-fg); }
-
-/* Glass navy cards with a thin cyan edge */
-.glass {
-  background: linear-gradient(180deg, #0c1f30cc 0%, #050e17e6 100%);
-  border: 1px solid #5cc6ea24;
-  border-radius: var(--radius-lg);
-  box-shadow: inset 0 1px 0 #ffffff0a;
-}
-.glass-strong {
-  background: linear-gradient(160deg, #0f2a40 0%, #071420 60%, #050d16 100%);
-  border: 1px solid #5cc6ea33;
-  border-radius: var(--radius-lg);
-}
-
-/* Design-tool "selection box" around a highlighted word */
-.select-box {
-  position: relative;
-  display: inline-block;
-  padding: 0 .12em .06em;
-  border: 1.5px solid #4fb6dc;
-  background: #4fb6dc1a;
-  border-radius: 2px;
-}
-.select-box > i {
-  position: absolute;
-  width: 7px;
-  height: 7px;
-  background: #4fb6dc;
-  border-radius: 1px;
-}
-.select-box > i:nth-child(1) { left: -4px; top: -4px; }
-.select-box > i:nth-child(2) { right: -4px; top: -4px; }
-.select-box > i:nth-child(3) { left: -4px; bottom: -4px; }
-.select-box > i:nth-child(4) { right: -4px; bottom: -4px; }
-
-/* Hero: faint vertical light lines */
-.light-lines {
-  background-image: linear-gradient(to right, #5cc6ea14 1px, transparent 1px);
-  background-size: 160px 100%;
-  mask-image: linear-gradient(to bottom, transparent 0%, #000 25%, #000 70%, transparent 100%);
-}
-
-/* Hero: glowing planet horizon */
-.horizon {
-  position: absolute;
-  left: 50%;
-  width: 190%;
-  aspect-ratio: 1;
-  transform: translateX(-50%);
-  border-radius: 50%;
-  background: radial-gradient(closest-side, #000305 93%, #031726 97%, #0a4c74 99%, transparent 100%);
-  box-shadow:
-    0 -1px 0 1px #7fdcff,
-    0 -8px 30px 6px #36b9f0cc,
-    0 -40px 120px 30px #0b65a3aa,
-    0 -120px 260px 60px #0b65a355,
-    inset 0 40px 80px -20px #2fa9e2aa;
-  animation: var(--animate-horizon);
-}
-/* Small screens: fewer, smaller blurs (very large blurs render in visible tiles on mobile GPUs). */
-@media (max-width: 767px) {
-  .horizon {
-    box-shadow:
-      0 -1px 0 1px #7fdcff,
-      0 -6px 24px 4px #36b9f0cc,
-      0 -30px 80px 16px #0b65a399,
-      inset 0 30px 60px -20px #2fa9e2aa;
+  /* Warm light on parchment. */
+  .text-gradient {
+    background: linear-gradient(100deg, #fff1db 0%, #ffe0b1 45%, #ffa263 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
   }
-}
-@media (min-width: 768px) { .horizon { width: 150%; } }
+  .text-gradient-soft {
+    background: linear-gradient(100deg, #c0b0ca 0%, #f0dfec 50%, #bca2d0 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
 
-.dot-grid {
-  background-image: radial-gradient(#5cc6ea33 1.2px, transparent 1.3px);
-  background-size: 14px 14px;
-}
+  /* Pill buttons */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border-radius: 9999px;
+    font-weight: 600;
+    font-size: 0.9rem;
+    line-height: 1;
+    transition:
+      transform 0.15s ease,
+      box-shadow 0.2s ease,
+      background-color 0.2s ease,
+      border-color 0.2s ease,
+      opacity 0.2s;
+    white-space: nowrap;
+  }
+  .btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+  .btn-primary {
+    color: #24110b;
+    background: linear-gradient(180deg, #ffcc92 0%, #ffa263 55%, #ed8246 100%);
+    box-shadow:
+      inset 0 1px 0 #ffffff80,
+      0 0 0 1px #ffa26355,
+      0 8px 28px -8px #e57c3b55;
+  }
+  .btn-primary:hover:not(:disabled) {
+    box-shadow:
+      inset 0 1px 0 #ffffff99,
+      0 0 0 1px #ffd2a4,
+      0 10px 36px -6px #e57c3b88;
+    transform: translateY(-1px);
+  }
+  .btn-outline {
+    color: var(--color-fg);
+    border: 1px solid #ffa26366;
+    background: #ffa2630d;
+  }
+  .btn-outline:hover:not(:disabled) {
+    border-color: #ffa263cc;
+    background: #ffa2631f;
+  }
+  .btn-ghost {
+    color: var(--color-fg-2);
+  }
+  .btn-ghost:hover {
+    color: var(--color-fg);
+  }
+
+  /* Ink-dark panels with a warm edge. */
+  .glass {
+    background: linear-gradient(180deg, #2b1d35cc 0%, #19121fe6 100%);
+    border: 1px solid #ffa26324;
+    border-radius: var(--radius-lg);
+    box-shadow: inset 0 1px 0 #ffffff0a;
+  }
+  .glass-strong {
+    background: linear-gradient(160deg, #33223d 0%, #201727 60%, #19121f 100%);
+    border: 1px solid #ffa26333;
+    border-radius: var(--radius-lg);
+  }
+
+  .dot-grid {
+    background-image: radial-gradient(#ffa26333 1.2px, transparent 1.3px);
+    background-size: 14px 14px;
+  }
 }
 
 .skeleton {
-  background: linear-gradient(90deg, #08141f 0%, #102335 50%, #08141f 100%);
+  background: linear-gradient(90deg, #1c1526 0%, #32243e 50%, #1c1526 100%);
   background-size: 200% 100%;
   animation: var(--animate-shimmer);
   border-radius: 6px;
 }
 
 .grid-bg {
-  background-image:
-    linear-gradient(to right, #5cc6ea0a 1px, transparent 1px),
-    linear-gradient(to bottom, #5cc6ea0a 1px, transparent 1px);
+  background-image: linear-gradient(to right, #ffa2630a 1px, transparent 1px), linear-gradient(to bottom, #ffa2630a 1px, transparent 1px);
   background-size: 48px 48px;
 }
 
 /* Gradient hairline separators (FAQ, sections) */
 .hairline {
   height: 1px;
-  background: linear-gradient(90deg, transparent, #5cc6ea44 30%, #5cc6ea66 50%, #5cc6ea44 70%, transparent);
+  background: linear-gradient(90deg, transparent, #ffa26344 30%, #ffa26366 50%, #ffa26344 70%, transparent);
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(4px) scale(.99); }
-  to { opacity: 1; transform: none; }
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.99);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 @layer components {
@@ -241,23 +224,165 @@ h1, h2, h3, .font-display {
     height: 2.875rem;
     border-radius: 9999px;
     border: 1px solid var(--color-line-strong);
-    background: #050e17;
+    background: #17111f;
     padding: 0 1.1rem;
-    font-size: .9375rem;
+    font-size: 0.9375rem;
     color: var(--color-fg);
-    transition: border-color .15s, box-shadow .15s;
+    transition:
+      border-color 0.15s,
+      box-shadow 0.15s;
   }
-  textarea.input { height: auto; padding: .75rem 1.1rem; border-radius: 16px; }
-  .input::placeholder { color: var(--color-muted); }
-  .input:hover { border-color: #2a6787; }
-  .input:focus { outline: none; border-color: var(--color-accent); box-shadow: 0 0 0 3px #5cc6ea26; }
+  textarea.input {
+    height: auto;
+    padding: 0.75rem 1.1rem;
+    border-radius: 16px;
+  }
+  .input::placeholder {
+    color: var(--color-muted);
+  }
+  .input:hover {
+    border-color: #80618c;
+  }
+  .input:focus {
+    outline: none;
+    border-color: var(--color-accent);
+    box-shadow: 0 0 0 3px #ffa26326;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
-    animation-duration: .001ms !important;
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
     animation-iteration-count: 1 !important;
-    transition-duration: .001ms !important;
+    transition-duration: 0.001ms !important;
     scroll-behavior: auto !important;
+  }
+}
+
+/* Seasonal chrome is decorative; facts, claims and warnings remain explicitly labelled. */
+.haunt-banner {
+  border-bottom: 1px solid #b9ce8c2b;
+  background: #c1da960a;
+}
+.edition-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  color: var(--color-spectral);
+  font: 10px var(--font-mono);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+.haunted-hero {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border-bottom: 1px solid var(--color-line);
+  background: radial-gradient(ellipse at 80% 45%, #5c326426, transparent 55%), radial-gradient(ellipse at 10% 75%, #dc77300b, transparent 45%);
+}
+.haunted-hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  opacity: 0.35;
+  background-image: radial-gradient(#c5b1ce55 0.7px, transparent 0.7px);
+  background-size: 27px 27px;
+  mask-image: linear-gradient(90deg, transparent, #000);
+}
+.haunt-script {
+  display: block;
+  font-family: Georgia, "Times New Roman", serif;
+  font-style: italic;
+  font-weight: 400;
+  letter-spacing: -0.05em;
+  color: var(--color-accent);
+}
+.haunted-scene {
+  position: relative;
+  width: 100%;
+  max-width: 560px;
+  margin-inline: auto;
+}
+.scene-illustration {
+  position: relative;
+  animation: spirit-drift 7s ease-in-out infinite;
+}
+.scene-aura {
+  position: absolute;
+  inset: 8% 5% 5%;
+  background: radial-gradient(ellipse at 45% 40%, #c1da9614, transparent 60%);
+  border-radius: 50%;
+}
+.scene-note {
+  position: absolute;
+  color: #c4afcc;
+  font-family: Georgia, "Times New Roman", serif;
+  font-style: italic;
+  font-size: 17px;
+}
+.scene-note-top {
+  top: 12%;
+  left: 2%;
+  transform: rotate(-9deg);
+}
+.scene-note-bottom {
+  bottom: 2%;
+  right: 9%;
+  transform: rotate(-5deg);
+}
+.haunt-stats {
+  border-top: 1px solid var(--color-line);
+  background: #100d1680;
+}
+.case-step {
+  position: relative;
+  border: 1px solid var(--color-line-strong);
+  border-radius: 18px;
+  background: linear-gradient(140deg, #2b1d32, #19131f);
+}
+.case-step::after {
+  content: "";
+  position: absolute;
+  inset: 8px;
+  border: 1px dashed #a585b126;
+  border-radius: 12px;
+  pointer-events: none;
+}
+.case-step:hover {
+  border-color: #ffa26377;
+}
+.evidence-trail {
+  border: 1px solid #bba3ce2b;
+  border-radius: 24px;
+  padding: 1.25rem;
+  background: linear-gradient(160deg, #271a31, #16121e);
+}
+.paper-passport {
+  background: #f5e8ce;
+  color: #302334;
+  border: 1px solid #fff3df;
+}
+.paper-passport .paper-muted {
+  color: #6d526b;
+}
+.haunt-hairline {
+  height: 1px;
+  background: linear-gradient(90deg, #ffa26380, #c1da9633, transparent);
+}
+@keyframes spirit-drift {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-0.5deg);
+  }
+  50% {
+    transform: translateY(-7px) rotate(0.5deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .scene-illustration {
+    animation: none;
   }
 }

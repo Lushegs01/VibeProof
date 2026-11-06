@@ -171,7 +171,7 @@ export function WhatChanged({ address }: { address: string }) {
           : "No earlier snapshot exists yet."}
       </p>
       {data.diffs.length ? (
-        <ul className="grid grid-cols-2 gap-px overflow-hidden rounded-[20px] border border-[#5cc6ea2e] bg-[#5cc6ea1f] sm:grid-cols-4">
+        <ul className="grid grid-cols-2 gap-px overflow-hidden rounded-[20px] border border-accent/20 bg-accent-dim sm:grid-cols-4">
           {data.diffs.map((d) => (
             <li key={d.metric} className="bg-surface px-4 py-3">
               <div className={`font-mono text-lg tabular ${d.delta > 0 ? "text-fg" : "text-fg-2"}`}>

@@ -25,13 +25,21 @@ export default async function DiscoverPage({ searchParams }: Props) {
 
   return (
     <div className="mx-auto max-w-6xl px-4 pt-10 md:px-6 md:pt-14">
-      <p className="label">Discover</p>
+      <p className="edition-label">Discover · Unearth the evidence</p>
       <h1 className="text-gradient mt-3 text-4xl font-medium leading-tight md:text-5xl">vibe/vibe launches</h1>
       <p className="mt-3 max-w-xl text-fg-2">Transparent sorting only. There is no “best token” ranking and no recommendation.</p>
 
       <nav aria-label="Category" className="mt-8 flex flex-wrap gap-2">
         {Object.entries(CATEGORIES).map(([k, label]) => (
-          <Link key={k} href={href(sort, k)} aria-current={k === category ? "page" : undefined} className={cn("rounded-full border px-4 py-2 text-sm transition-colors", k === category ? "border-accent/60 bg-accent-dim text-fg" : "border-line-strong text-fg-2 hover:text-fg")}>
+          <Link
+            key={k}
+            href={href(sort, k)}
+            aria-current={k === category ? "page" : undefined}
+            className={cn(
+              "rounded-full border px-4 py-2 text-sm transition-colors",
+              k === category ? "border-accent/60 bg-accent-dim text-fg" : "border-line-strong text-fg-2 hover:text-fg",
+            )}
+          >
             {label}
           </Link>
         ))}
@@ -39,7 +47,12 @@ export default async function DiscoverPage({ searchParams }: Props) {
       <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
         <span className="label">Sort by</span>
         {Object.entries(SORTS).map(([k, s]) => (
-          <Link key={k} href={href(k, category)} aria-current={k === sort ? "true" : undefined} className={cn("transition-colors", k === sort ? "text-fg underline decoration-accent underline-offset-[6px]" : "text-fg-2 hover:text-fg")}>
+          <Link
+            key={k}
+            href={href(k, category)}
+            aria-current={k === sort ? "true" : undefined}
+            className={cn("transition-colors", k === sort ? "text-fg underline decoration-accent underline-offset-[6px]" : "text-fg-2 hover:text-fg")}
+          >
             {s.label}
           </Link>
         ))}
@@ -70,15 +83,33 @@ export default async function DiscoverPage({ searchParams }: Props) {
                   </Link>
                   <div className="max-w-[200px] truncate text-xs text-fg-2">{t.name}</div>
                 </td>
-                <td className="px-4 py-3 font-mono text-xs">{t.creator ? <Link href={`/creator/${t.creator}`} className="text-fg-2 hover:text-fg">{shortAddress(t.creator)}</Link> : "—"}</td>
+                <td className="px-4 py-3 font-mono text-xs">
+                  {t.creator ? (
+                    <Link href={`/creator/${t.creator}`} className="text-fg-2 hover:text-fg">
+                      {shortAddress(t.creator)}
+                    </Link>
+                  ) : (
+                    "—"
+                  )}
+                </td>
                 <td className="px-4 py-3 font-mono text-xs text-fg-2">{timeAgo(t.createdAt)}</td>
-                <td className="px-4 py-3 text-right font-mono tabular">{t.holders === null ? <span className="text-fg-2">{t.historyComplete ? "Unavailable" : "History pending"}</span> : formatInt(t.holders)}</td>
-                <td className="px-4 py-3 text-right font-mono tabular">{t.transactions === null ? <span className="text-fg-2">{t.historyComplete ? "Unavailable" : "History pending"}</span> : formatInt(t.transactions)}</td>
+                <td className="px-4 py-3 text-right font-mono tabular">
+                  {t.holders === null ? <span className="text-fg-2">{t.historyComplete ? "Unavailable" : "History pending"}</span> : formatInt(t.holders)}
+                </td>
+                <td className="px-4 py-3 text-right font-mono tabular">
+                  {t.transactions === null ? (
+                    <span className="text-fg-2">{t.historyComplete ? "Unavailable" : "History pending"}</span>
+                  ) : (
+                    formatInt(t.transactions)
+                  )}
+                </td>
                 <td className="px-4 py-3">
                   <LaunchStatus status={t.status} />
                 </td>
                 <td className="px-4 py-3">{t.proofSubmitted ? <Pill tone="accent">Submitted</Pill> : <span className="text-xs text-muted">—</span>}</td>
-                <td className="px-4 py-3 font-mono text-xs text-fg-2">{!t.historyComplete ? "Unavailable" : t.lastActivityAt ? timeAgo(t.lastActivityAt) : "None observed"}</td>
+                <td className="px-4 py-3 font-mono text-xs text-fg-2">
+                  {!t.historyComplete ? "Unavailable" : t.lastActivityAt ? timeAgo(t.lastActivityAt) : "None observed"}
+                </td>
               </tr>
             ))}
           </tbody>
