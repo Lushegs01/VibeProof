@@ -1,0 +1,17 @@
+
+> vibeproof@0.1.0 test
+> vitest run
+
+The plugin "vite-tsconfig-paths" is detected. Vite now supports tsconfig paths resolution natively via the resolve.tsconfigPaths option. You can remove the plugin and set resolve.tsconfigPaths: true in your Vite config instead.
+
+ RUN  v5.1.0 /workspace/VibeProof
+
+
+ Test Files  45 passed | 1 skipped (46)
+      Tests  294 passed | 5 skipped (299)
+   Start at  07:10:47
+   Duration  51.66s (tests 57%, import 42%, transform 1%, worker 1%)
+
+     Import  139 modules were evaluated 193 times · 18.69s total, 42% of tracked time
+             ~5.23s faster with isolate: false — shared modules are evaluated once per worker instead of once per file
+             learn more: https://vitest.dev/guide/improving-performance#test-isolation

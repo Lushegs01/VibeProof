@@ -30,11 +30,14 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ["postgres", "ioredis"],
   async headers() {
     return [
-      { source: "/:path*", headers: securityHeaders },
+      { source: "/((?!embed/).*)", headers: securityHeaders },
       // The embeddable badge is meant to be framed by project sites.
       {
         source: "/embed/:path*",
-        headers: [{ key: "Content-Security-Policy", value: csp.replace("frame-ancestors 'none'", "frame-ancestors *") }],
+        headers: [
+          ...securityHeaders.filter((h) => !["Content-Security-Policy", "X-Frame-Options"].includes(h.key)),
+          { key: "Content-Security-Policy", value: csp.replace("frame-ancestors 'none'", "frame-ancestors *") },
+        ],
       },
     ];
   },

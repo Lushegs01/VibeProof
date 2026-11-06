@@ -1,3 +1,5 @@
+import { RollingWindow } from "./rolling-window";
+import { redactSecrets } from "../chain/rpc-errors";
 type Level = "debug" | "info" | "warn" | "error";
 const SENSITIVE = /^(signature|sig|private_?key|mnemonic|seed|secret|password|authorization|cookie|api_?key|access_?token|session(_?token)?|github_?token)$/i;
 
@@ -10,9 +12,8 @@ function scrub(fields: Record<string, unknown>) {
 /** Structured JSON logger. Never pass raw secrets; keys matching SENSITIVE are redacted. */
 export function log(level: Level, event: string, fields: Record<string, unknown> = {}) {
   if (level === "debug" && process.env.LOG_LEVEL !== "debug") return;
-  const line = JSON.stringify(
-    { ts: new Date().toISOString(), level, event, ...scrub(fields) },
-    (_k, v) => (typeof v === "bigint" ? v.toString() : v),
+  const line = JSON.stringify({ ts: new Date().toISOString(), level, event, ...scrub(fields) }, (key, value) =>
+    SENSITIVE.test(key) ? "[redacted]" : typeof value === "bigint" ? value.toString() : typeof value === "string" ? redactSecrets(value) : value,
   );
   (level === "error" ? console.error : level === "warn" ? console.warn : console.log)(line);
 }
@@ -39,3 +40,6 @@ export async function timed<T>(name: string, fn: () => Promise<T>): Promise<T> {
     log("debug", "timing", { name, ms });
   }
 }
+
+/** Process-local API traffic; aggregate structured logs in a log drain for fleet-wide rates. */
+export const apiTraffic = new RollingWindow();

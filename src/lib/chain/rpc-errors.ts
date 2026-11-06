@@ -34,7 +34,16 @@ export class RpcError extends Error {
   }
 }
 
-type ErrLike = { name?: string; message?: string; shortMessage?: string; details?: string; status?: number; code?: number; headers?: { get?: (k: string) => string | null }; cause?: unknown };
+type ErrLike = {
+  name?: string;
+  message?: string;
+  shortMessage?: string;
+  details?: string;
+  status?: number;
+  code?: number;
+  headers?: { get?: (k: string) => string | null };
+  cause?: unknown;
+};
 
 function collect(e: unknown): { text: string; status?: number; codes: number[]; names: string[]; retryAfter?: string | null } {
   const parts: string[] = [];
@@ -86,12 +95,18 @@ export function classifyRpcError(e: unknown): RpcErrorInfo {
   if (m) return { kind: "range_too_large", message, status, maxSpan: m[1] ? BigInt(m[1]) : undefined };
   if (
     names.includes("ResponseBodyTooLargeError") ||
-    /response body exceeded the size limit|logs matched by query exceeds limit|query returned more than \d+ results|too many (logs|results)|log response size exceeded|response size (is )?(too large|exceeded)/i.test(t)
+    /response body exceeded the size limit|logs matched by query exceeds limit|query returned more than \d+ results|too many (logs|results)|log response size exceeded|response size (is )?(too large|exceeded)/i.test(
+      t,
+    )
   )
     return { kind: "range_too_large", message, status };
 
   // ── Rate limiting ──
-  if (status === 429 || codes.includes(-32005) || /\b429\b|too many requests|rate[- ]?limit|request limit (reached|exceeded)|exceeded .*(capacity|throughput|compute units)/i.test(t))
+  if (
+    status === 429 ||
+    codes.includes(-32005) ||
+    /\b429\b|too many requests|rate[- ]?limit|request limit (reached|exceeded)|exceeded .*(capacity|throughput|compute units)/i.test(t)
+  )
     return { kind: "rate_limited", message, status, retryAfterMs: parseRetryAfter(retryAfter) };
 
   // ── Timeouts ──
@@ -99,12 +114,23 @@ export function classifyRpcError(e: unknown): RpcErrorInfo {
 
   // ── Permanent request problems (never retried) ──
   if (/historical state .* not available|missing trie node|pruned/i.test(t)) return { kind: "permanent", message, status };
-  if (codes.includes(-32601) || /method .*(not found|not (available|supported))|unsupported method|does not exist\/is not available/i.test(t)) return { kind: "permanent", message, status };
-  if (/execution reverted|invalid (address|argument|params|block range|from block|to block)|cannot unmarshal|invalid hex|fromBlock.*(greater|after) .*toBlock|invalid json/i.test(t)) return { kind: "permanent", message, status };
+  if (codes.includes(-32601) || /method .*(not found|not (available|supported))|unsupported method|does not exist\/is not available/i.test(t))
+    return { kind: "permanent", message, status };
+  if (
+    /execution reverted|invalid (address|argument|params|block range|from block|to block)|cannot unmarshal|invalid hex|fromBlock.*(greater|after) .*toBlock|invalid json/i.test(
+      t,
+    )
+  )
+    return { kind: "permanent", message, status };
   if (status !== undefined && status >= 400 && status < 500 && status !== 408 && status !== 429) return { kind: "permanent", message, status };
 
   // ── Transient transport / server errors ──
-  if ((status !== undefined && (status >= 500 || status === 408)) || /ECONNRESET|ECONNREFUSED|EPIPE|ENOTFOUND|EAI_AGAIN|socket hang up|fetch failed|other side closed|network ?error|UND_ERR|\b50[0234]\b|bad gateway|service unavailable|gateway time|header not found|unknown block|internal error/i.test(t))
+  if (
+    (status !== undefined && (status >= 500 || status === 408)) ||
+    /ECONNRESET|ECONNREFUSED|EPIPE|ENOTFOUND|EAI_AGAIN|socket hang up|fetch failed|other side closed|network ?error|UND_ERR|\b50[0234]\b|bad gateway|service unavailable|gateway time|header not found|unknown block|internal error/i.test(
+      t,
+    )
+  )
     return { kind: "transient", message, status };
 
   if (/not found|could not be found/i.test(t)) return { kind: "not_found", message, status };
@@ -119,6 +145,7 @@ export const isRangeError = (k: RpcErrorKind) => k === "range_too_large" || k ==
  */
 export function redactSecrets(s: string): string {
   return s
+    .replace(/Bearer\s+[^\s"']+/gi, "Bearer [redacted]")
     .replace(/(https?|wss?):\/\/([^\s"'/?#]+)[^\s"']*/gi, (_m, proto: string, host: string) => `${proto}://${host.replace(/^[^@]*@/, "")}/…`)
     .replace(/(api[_-]?key|token|key|secret)=([^&\s"']+)/gi, "$1=[redacted]");
 }

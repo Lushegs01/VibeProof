@@ -16,17 +16,25 @@ export default async function Badge({ params }: { params: Promise<{ address: str
   if (!p) notFound();
   const app = process.env.NEXT_PUBLIC_APP_URL ?? "";
   return (
-    <a href={`${app}/token/${p.chain}/${p.address}`} target="_blank" rel="noopener noreferrer" className="fixed inset-0 flex flex-col justify-between border border-line bg-bg p-4 text-fg">
+    <a
+      href={`${app}/token/${p.chain}/${p.address}`}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="fixed inset-0 flex flex-col justify-between border border-line bg-bg p-4 text-fg"
+    >
       <div className="flex items-center justify-between font-mono text-[11px] tracking-[0.18em] text-fg-2">
         VIBEPROOF {p.demo ? <span className="text-claimed">DEMO</span> : null}
       </div>
       <ul className="space-y-0.5 text-sm">
-        <li>{p.contract.sourceVerified ? "Contract verified" : p.contract.sourceVerified === false ? "Contract source not verified" : "Contract: unavailable"}</li>
         <li>
-          Product proof {p.proof.score.observed}/{p.proof.score.total}
+          {p.contract.sourceVerified ? "Contract verified" : p.contract.sourceVerified === false ? "Contract source not verified" : "Contract: unavailable"}
+        </li>
+        <li>
+          Observed links {p.proof.score.observed}/{p.proof.score.total}
         </li>
         <li>{p.activity.holders.value !== null ? `${Number(p.activity.holders.value).toLocaleString("en-US")} holders` : "Holders unavailable"}</li>
       </ul>
+      <p className="text-[10px] text-fg-2">Checked {new Date(p.observedAt).toISOString().slice(0, 16)} UTC · Evidence, not endorsement</p>
     </a>
   );
 }

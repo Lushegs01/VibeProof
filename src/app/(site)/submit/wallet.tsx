@@ -2,7 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { createConfig, http, useConnect, useConnectors, type Connector } from "wagmi";
-import { injected, metaMask, walletConnect } from "wagmi/connectors";
+import { injected } from "wagmi";
+import { metaMask } from "wagmi/connectors/metaMask";
+import { walletConnectProtocol } from "@/lib/wallet/walletconnect";
+import { WalletPairing } from "./wallet-pairing";
 import { Loader2, Smartphone, Wallet } from "lucide-react";
 import { activeNetwork } from "@/lib/chain/networks";
 
@@ -23,7 +26,14 @@ export const wagmiConfig = createConfig({
   connectors: [
     injected(),
     metaMask({ dappMetadata: { name: "VibeProof", url: appUrl } }),
-    ...(wcProjectId ? [walletConnect({ projectId: wcProjectId, metadata: { name: "VibeProof", description: "Submit project proof for a vibe/vibe launch", url: appUrl, icons: [] }, showQrModal: true })] : []),
+    ...(wcProjectId
+      ? [
+          walletConnectProtocol({
+            projectId: wcProjectId,
+            metadata: { name: "VibeProof", description: "Submit project proof for a vibe/vibe launch", url: appUrl, icons: [] },
+          }),
+        ]
+      : []),
   ],
   transports: { [chain.id]: http() },
   ssr: true,
@@ -64,12 +74,21 @@ export function WalletPicker() {
   const options: { connector: Connector; label: string; hint?: string; icon?: string }[] = [
     ...announced.map((c) => ({ connector: c, label: c.name, icon: c.icon })),
     ...(generic && env?.injected && !announced.length ? [{ connector: generic, label: "Browser wallet" }] : []),
-    ...(mmSdk ? [{ connector: mmSdk, label: announced.some((c) => /metamask/i.test(c.name)) ? "MetaMask mobile" : "MetaMask", hint: env?.mobile ? "Opens the MetaMask app" : "Scan a QR code with the MetaMask mobile app" }] : []),
+    ...(mmSdk
+      ? [
+          {
+            connector: mmSdk,
+            label: announced.some((c) => /metamask/i.test(c.name)) ? "MetaMask mobile" : "MetaMask",
+            hint: env?.mobile ? "Opens the MetaMask app" : "Scan a QR code with the MetaMask mobile app",
+          },
+        ]
+      : []),
     ...(wc ? [{ connector: wc, label: "WalletConnect", hint: "Any mobile wallet, via QR code" }] : []),
   ];
 
   return (
     <div className="space-y-3">
+      <WalletPairing />
       <div className="flex flex-wrap gap-2">
         {options.map(({ connector, label, hint, icon }) => (
           <button

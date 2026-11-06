@@ -1,36 +1,40 @@
 name: Indexer cron
-
-# Triggers one bounded indexer run on the deployed app every 5 minutes.
-# Works on any Vercel plan (Vercel Cron is limited to daily jobs on Hobby).
-# Required repository secrets:
-#   VIBEPROOF_URL  – production URL, e.g. https://vibe-proof.vercel.app
-#   CRON_SECRET    – same value as the CRON_SECRET env var in Vercel
 on:
   schedule:
     - cron: "*/5 * * * *"
   workflow_dispatch: {}
-
-permissions: {}
-
+permissions:
+  contents: read
 concurrency:
   group: indexer-cron
   cancel-in-progress: false
-
 jobs:
   run:
     runs-on: ubuntu-latest
     timeout-minutes: 7
     steps:
-      - name: Trigger indexer run
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24
+      - name: Validate configuration and execute indexer
         env:
           VIBEPROOF_URL: ${{ secrets.VIBEPROOF_URL }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
-        run: |
-          if [ -z "$VIBEPROOF_URL" ] || [ -z "$CRON_SECRET" ]; then
-            echo "::notice::VIBEPROOF_URL / CRON_SECRET secrets not set; skipping."
-            exit 0
-          fi
-          status=$(curl -sS -o response.json -w '%{http_code}' --max-time 330 \
-            -H "Authorization: Bearer ${CRON_SECRET}" "${VIBEPROOF_URL%/}/api/cron/indexer")
-          cat response.json; echo
-          test "$status" = "200"
+          VIBEPROOF_ALLOWED_HOSTS: ${{ vars.VIBEPROOF_ALLOWED_HOSTS }}
+        run: node scripts/trigger-indexer.mjs
+
+  monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24
+      - name: Probe operations independently of the indexer job
+        env:
+          VIBEPROOF_URL: ${{ secrets.VIBEPROOF_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          VIBEPROOF_ALLOWED_HOSTS: ${{ vars.VIBEPROOF_ALLOWED_HOSTS }}
+        run: node scripts/trigger-monitor.mjs

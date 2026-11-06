@@ -14,10 +14,28 @@ export type SiweVerifyResult = { ok: true; address: Address } | { ok: false; rea
  */
 export async function verifySiwe(message: string, signature: Hex, expectedDomain: string, now = new Date()): Promise<SiweVerifyResult> {
   if (message.length > 4096) return { ok: false, reason: "Message too long" };
-  const parsed = parseSiweMessage(message);
+  let parsed: ReturnType<typeof parseSiweMessage>;
+  try {
+    parsed = parseSiweMessage(message);
+  } catch {
+    return { ok: false, reason: "Malformed SIWE message" };
+  }
   if (!parsed.address || !parsed.nonce || !parsed.domain) return { ok: false, reason: "Malformed SIWE message" };
   if (parsed.chainId !== activeNetwork().chainId) return { ok: false, reason: "Wrong chain id" };
   if (!validateSiweMessage({ message: parsed, domain: expectedDomain, time: now })) return { ok: false, reason: "Domain, time window or format invalid" };
+  if (
+    !parsed.issuedAt ||
+    !parsed.expirationTime ||
+    parsed.issuedAt > now ||
+    now.getTime() - parsed.issuedAt.getTime() > 600_000 ||
+    parsed.expirationTime.getTime() - parsed.issuedAt.getTime() > 600_000
+  )
+    return { ok: false, reason: "SIWE requires an explicit ten-minute time window" };
+  try {
+    if (new URL(parsed.uri ?? "").host !== expectedDomain) return { ok: false, reason: "SIWE URI domain mismatch" };
+  } catch {
+    return { ok: false, reason: "Invalid SIWE URI" };
+  }
   const address = getAddress(parsed.address);
   let valid = false;
   try {

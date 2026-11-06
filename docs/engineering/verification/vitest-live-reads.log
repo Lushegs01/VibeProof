@@ -1,0 +1,13 @@
+
+> vibeproof@0.1.0 test:live
+> vitest run tests/integration/rpc.test.ts
+
+The plugin "vite-tsconfig-paths" is detected. Vite now supports tsconfig paths resolution natively via the resolve.tsconfigPaths option. You can remove the plugin and set resolve.tsconfigPaths: true in your Vite config instead.
+
+ RUN  v5.1.0 /workspace/VibeProof
+
+
+ Test Files  1 passed (1)
+      Tests  5 passed (5)
+   Start at  07:15:25
+   Duration  3.08s (tests 99%)

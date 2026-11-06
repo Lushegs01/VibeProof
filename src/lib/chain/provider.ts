@@ -1,3 +1,4 @@
+import { RollingWindow } from "../util/rolling-window";
 import {
   createPublicClient,
   http,
@@ -41,9 +42,9 @@ export type ChainProvider = {
   getBlock(args: { blockNumber?: bigint; blockTag?: "latest" | "safe" | "finalized" }): Promise<Block>;
   getLogs<E extends AbiEvent>(args: LogFilter & { event?: E }): Promise<Log[]>;
   readContract<T = unknown>(args: { address: Address; abi: Abi; functionName: string; args?: readonly unknown[] }): Promise<T>;
-  multicall(args: { contracts: { address: Address; abi: Abi; functionName: string; args?: readonly unknown[] }[] }): Promise<
-    ({ status: "success"; result: unknown } | { status: "failure"; error: Error })[]
-  >;
+  multicall(args: {
+    contracts: { address: Address; abi: Abi; functionName: string; args?: readonly unknown[] }[];
+  }): Promise<({ status: "success"; result: unknown } | { status: "failure"; error: Error })[]>;
   getBytecode(address: Address): Promise<Hex | undefined>;
   getStorageAt(address: Address, slot: Hex): Promise<Hex | undefined>;
   getTransaction(hash: Hash): Promise<Transaction | null>;
@@ -66,30 +67,29 @@ export type ProviderStats = {
   /** Over the last 5 minutes: failed attempts / attempts (attempts include retries). null = no traffic. */
   errorRate5m: number | null;
   attempts5m: number;
+  window5m?: ReturnType<RollingWindow["snapshot"]>;
   lastError: { at: string; method: string; kind: RpcErrorKind; message: string } | null;
 };
 
 class Telemetry {
-  s: Omit<ProviderStats, "errorRate5m" | "attempts5m"> = { requests: 0, succeeded: 0, failed: 0, retries: 0, rateLimited: 0, rangeSplits: 0, byKind: {}, byMethod: {}, lastError: null };
-  /** Per-10s buckets for the rolling window: [bucketStart, attempts, failures]. */
-  private window: [number, number, number][] = [];
-
-  attempt(ok: boolean) {
-    const b = Math.floor(Date.now() / 10_000) * 10_000;
-    const last = this.window[this.window.length - 1];
-    if (last && last[0] === b) {
-      last[1]++;
-      if (!ok) last[2]++;
-    } else this.window.push([b, 1, ok ? 0 : 1]);
-    const cutoff = Date.now() - 300_000;
-    while (this.window.length && this.window[0][0] < cutoff) this.window.shift();
+  s: Omit<ProviderStats, "errorRate5m" | "attempts5m"> = {
+    requests: 0,
+    succeeded: 0,
+    failed: 0,
+    retries: 0,
+    rateLimited: 0,
+    rangeSplits: 0,
+    byKind: {},
+    byMethod: {},
+    lastError: null,
+  };
+  private window = new RollingWindow();
+  attempt(ok: boolean, ms = 0, throttled = false, retry = false) {
+    this.window.record({ error: !ok, ms, throttled, retry });
   }
   snapshot(): ProviderStats {
-    const cutoff = Date.now() - 300_000;
-    let a = 0;
-    let f = 0;
-    for (const [t, n, e] of this.window) if (t >= cutoff) ((a += n), (f += e));
-    return { ...structuredClone(this.s), errorRate5m: a ? f / a : null, attempts5m: a };
+    const window5m = this.window.snapshot();
+    return { ...structuredClone(this.s), errorRate5m: window5m.errorRate, attempts5m: window5m.count, window5m };
   }
 }
 
@@ -133,7 +133,13 @@ export function backoffMs(attempt: number, policy: RetryPolicy, info?: RpcErrorI
  * Wrap an RPC call: concurrency limit, shared 429 cooldown, classified retries, telemetry.
  * Exported for tests (drive it with any async function).
  */
-export function createCaller(opts: { maxConcurrency: number; policy?: RetryPolicy; telemetry?: Telemetry; label?: string; sleepFn?: (ms: number) => Promise<unknown> }) {
+export function createCaller(opts: {
+  maxConcurrency: number;
+  policy?: RetryPolicy;
+  telemetry?: Telemetry;
+  label?: string;
+  sleepFn?: (ms: number) => Promise<unknown>;
+}) {
   const limit = limiter(opts.maxConcurrency);
   const policy = opts.policy ?? DEFAULT_RETRY;
   const tel = opts.telemetry ?? new Telemetry();
@@ -154,13 +160,13 @@ export function createCaller(opts: { maxConcurrency: number; policy?: RetryPolic
       try {
         const res = await limit(fn);
         m.msTotal += Date.now() - t0;
-        tel.attempt(true);
+        tel.attempt(true, Date.now() - t0, false, attempt > 0);
         tel.s.succeeded++;
         return res;
       } catch (e) {
         m.msTotal += Date.now() - t0;
         const info = classifyRpcError(e);
-        tel.attempt(false);
+        tel.attempt(false, Date.now() - t0, info.kind === "rate_limited", attempt > 0);
         tel.s.byKind[info.kind] = (tel.s.byKind[info.kind] ?? 0) + 1;
         if (isRangeError(info.kind)) {
           // Expected while chunking: the caller narrows the query. Not a provider failure.
@@ -168,21 +174,30 @@ export function createCaller(opts: { maxConcurrency: number; policy?: RetryPolic
           metrics.inc("rpc.range_splits");
           throw new RpcError(info, method, { cause: e });
         }
+        if (info.kind === "rate_limited") {
+          tel.s.rateLimited++;
+          metrics.inc("rpc.rate_limited");
+        }
         const max = policy.maxAttempts[info.kind] ?? 0;
         if (attempt >= max) {
           m.errors++;
           tel.s.failed++;
           tel.s.lastError = { at: new Date().toISOString(), method, kind: info.kind, message: info.message };
           metrics.inc("rpc.failures");
-          log(info.kind === "not_found" ? "debug" : "warn", "indexer.provider_error", { network: opts.label, method, kind: info.kind, status: info.status, attempts: attempt + 1, error: info.message });
+          log(info.kind === "not_found" ? "debug" : "warn", "indexer.provider_error", {
+            network: opts.label,
+            method,
+            kind: info.kind,
+            status: info.status,
+            attempts: attempt + 1,
+            error: info.message,
+          });
           throw new RpcError(info, method, { cause: e });
         }
         const delay = backoffMs(attempt, policy, info);
         tel.s.retries++;
         metrics.inc("rpc.retries");
         if (info.kind === "rate_limited") {
-          tel.s.rateLimited++;
-          metrics.inc("rpc.rate_limited");
           pauseUntil = Math.max(pauseUntil, Date.now() + delay);
           if (Date.now() - lastRateLog > 10_000) {
             lastRateLog = Date.now();
@@ -215,7 +230,10 @@ function deduper() {
 
 const keyOf = (...parts: unknown[]) => JSON.stringify(parts, (_k, v) => (typeof v === "bigint" ? v.toString() : v));
 
-export function createViemProvider(slug: NetworkSlug = activeNetworkSlug(), opts: { maxConcurrency?: number; timeoutMs?: number; rpcUrl?: string; policy?: RetryPolicy } = {}): ChainProvider {
+export function createViemProvider(
+  slug: NetworkSlug = activeNetworkSlug(),
+  opts: { maxConcurrency?: number; timeoutMs?: number; rpcUrl?: string; policy?: RetryPolicy } = {},
+): ChainProvider {
   const cfg = getChainConfig(slug);
   if (!cfg) throw new Error(`Unsupported network: ${slug}`);
   const rpcUrl = opts.rpcUrl ?? cfg.rpcUrl;
@@ -228,9 +246,13 @@ export function createViemProvider(slug: NetworkSlug = activeNetworkSlug(), opts
     }),
     batch: { multicall: { wait: 8 } },
   }) as PublicClient;
-  const { call, telemetry } = createCaller({ maxConcurrency: opts.maxConcurrency ?? Number(process.env.RPC_MAX_CONCURRENCY ?? 8), policy: opts.policy, label: slug });
+  const { call, telemetry } = createCaller({
+    maxConcurrency: opts.maxConcurrency ?? Number(process.env.RPC_MAX_CONCURRENCY ?? 8),
+    policy: opts.policy,
+    label: slug,
+  });
   const dedupe = deduper();
-  const nullIfNotFound = async <T,>(fn: () => Promise<T>): Promise<T | null> => {
+  const nullIfNotFound = async <T>(fn: () => Promise<T>): Promise<T | null> => {
     try {
       return await fn();
     } catch (e) {
@@ -244,33 +266,47 @@ export function createViemProvider(slug: NetworkSlug = activeNetworkSlug(), opts
     chainId: cfg.chainId,
     logLimits: cfg.logLimits,
     getChainId: () => dedupe("chainid", () => call("eth_chainId", () => client.getChainId())),
-    getBlockNumber: () => dedupe("bn", () => call("eth_blockNumber", () => client.getBlockNumber({ cacheTime: 1_000 }))),
+    getBlockNumber: () => dedupe("bn", () => call("eth_blockNumber", () => client.getBlockNumber({ cacheTime: 0 }))),
     getBlock: (args) =>
       args.blockNumber !== undefined
         ? dedupe(keyOf("block", args.blockNumber), () => call("eth_getBlockByNumber", () => client.getBlock({ blockNumber: args.blockNumber! })))
         : call("eth_getBlockByNumber", () => client.getBlock({ blockTag: args.blockTag ?? "latest" })),
     getLogs: (args) =>
-      dedupe(keyOf("logs", args.address, args.event?.name, args.events?.map((e) => e.name), args.args, args.fromBlock, args.toBlock), () =>
-        call("eth_getLogs", () =>
-          client.getLogs({
-            address: args.address,
-            event: args.event as AbiEvent | undefined,
-            events: args.events as AbiEvent[] | undefined,
-            args: args.args as never,
-            fromBlock: args.fromBlock,
-            toBlock: args.toBlock,
-            strict: false,
-          } as never) as Promise<Log[]>,
+      dedupe(
+        keyOf(
+          "logs",
+          args.address,
+          args.event?.name,
+          args.events?.map((e) => e.name),
+          args.args,
+          args.fromBlock,
+          args.toBlock,
         ),
+        () =>
+          call(
+            "eth_getLogs",
+            () =>
+              client.getLogs({
+                address: args.address,
+                event: args.event as AbiEvent | undefined,
+                events: args.events as AbiEvent[] | undefined,
+                args: args.args as never,
+                fromBlock: args.fromBlock,
+                toBlock: args.toBlock,
+                strict: false,
+              } as never) as Promise<Log[]>,
+          ),
       ),
-    readContract: <T,>(args: { address: Address; abi: Abi; functionName: string; args?: readonly unknown[] }) => call("eth_call", () => client.readContract(args as never) as Promise<T>),
+    readContract: <T>(args: { address: Address; abi: Abi; functionName: string; args?: readonly unknown[] }) =>
+      call("eth_call", () => client.readContract({ ...args, batch: false } as never) as Promise<T>),
     // Large calldata chunks: fewer parallel eth_calls per multicall (each chunk bypasses the limiter).
     // With allowFailure, transport errors come back as per-call failures; callers classify them.
     multicall: (args) => call("multicall", () => client.multicall({ contracts: args.contracts as never, allowFailure: true, batchSize: 16_384 }) as never),
     getBytecode: (address) => dedupe(keyOf("code", address), () => call("eth_getCode", () => client.getCode({ address }))),
     getStorageAt: (address, slot) => dedupe(keyOf("slot", address, slot), () => call("eth_getStorageAt", () => client.getStorageAt({ address, slot }))),
     getTransaction: (hash) => dedupe(keyOf("tx", hash), () => call("eth_getTransactionByHash", () => nullIfNotFound(() => client.getTransaction({ hash })))),
-    getTransactionReceipt: (hash) => dedupe(keyOf("rcpt", hash), () => call("eth_getTransactionReceipt", () => nullIfNotFound(() => client.getTransactionReceipt({ hash })))),
+    getTransactionReceipt: (hash) =>
+      dedupe(keyOf("rcpt", hash), () => call("eth_getTransactionReceipt", () => nullIfNotFound(() => client.getTransactionReceipt({ hash })))),
     getBalance: (address) => call("eth_getBalance", () => client.getBalance({ address })),
     stats: () => telemetry.snapshot(),
   };
@@ -288,7 +324,8 @@ export function getProvider(slug: NetworkSlug = activeNetworkSlug()): ChainProvi
 export async function assertChainId(provider: ChainProvider) {
   if (!provider.getChainId) return;
   const actual = await provider.getChainId();
-  if (actual !== provider.chainId) throw new Error(`RPC for ${provider.slug} reports chain id ${actual}, expected ${provider.chainId}. Check the network's RPC URL.`);
+  if (actual !== provider.chainId)
+    throw new Error(`RPC for ${provider.slug} reports chain id ${actual}, expected ${provider.chainId}. Check the network's RPC URL.`);
 }
 
 export { redactSecrets };

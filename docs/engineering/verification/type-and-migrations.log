@@ -1,0 +1,5 @@
+
+> vibeproof@0.1.0 lint
+> tsc --noEmit && node scripts/validate-migrations.mjs
+
+8 versioned migrations registered; PostgreSQL integration tests verify execution and repeatability.

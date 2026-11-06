@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { WagmiProvider, useAccount, useDisconnect, useSignMessage, useSwitchChain, useWriteContract, usePublicClient } from "wagmi";
@@ -11,13 +11,14 @@ import { activeNetwork, tokenPath } from "@/lib/chain/networks";
 
 const appChain = activeNetwork().chain;
 import { REGISTRY_ABI } from "@/lib/registry/abi";
+import { ControlVerification } from "./control-verification";
 import { shortAddress } from "@/lib/util/address";
 import { StateBadge } from "@/components/ui/state-badge";
 import type { UrlCheckResult } from "@/lib/proof/checks";
 
 const qc = new QueryClient();
 
-export function SubmitFlow(props: { initialToken: string; registry: string | null }) {
+export function SubmitFlow(props: { initialToken: string; registry: string | null; confirmations: number; storageDisclosure: string }) {
   return (
     <WagmiProvider config={wagmiConfig}>
       <QueryClientProvider client={qc}>
@@ -28,17 +29,45 @@ export function SubmitFlow(props: { initialToken: string; registry: string | nul
 }
 
 const FIELDS = [
-  { k: "websiteUrl", label: "Website", ph: "https://yourproject.xyz", hint: "Checked for reachability and TLS. Include your contract address on the page to reach “verified”." },
-  { k: "githubUrl", label: "GitHub", ph: "https://github.com/org/repo", hint: "Public repository. Mention the contract address in the README to reach “verified”." },
+  {
+    k: "websiteUrl",
+    label: "Website",
+    ph: "https://yourproject.xyz",
+    hint: "Checked for reachability and TLS. Address mentions are observations. Verify domain control using a challenge.",
+  },
+  {
+    k: "githubUrl",
+    label: "GitHub",
+    ph: "https://github.com/org/repo",
+    hint: "Public repository. Repository facts are observations. Verify repository control using a challenge.",
+  },
   { k: "demoUrl", label: "Demo", ph: "https://app.yourproject.xyz", hint: "A working URL people can open." },
   { k: "docsUrl", label: "Documentation", ph: "https://docs.yourproject.xyz", hint: "" },
   { k: "twitterUrl", label: "X / Twitter", ph: "https://x.com/yourproject", hint: "Recorded as a creator claim." },
   { k: "discordUrl", label: "Discord", ph: "https://discord.gg/…", hint: "Recorded as a creator claim." },
 ] as const;
 
-type Result = { metadataHash: `0x${string}`; basis: string; checks: UrlCheckResult[] };
+type Result = {
+  token: `0x${string}`;
+  creator: `0x${string}`;
+  chainId: number;
+  metadataUri: string;
+  metadataHash: `0x${string}`;
+  basis: string;
+  checks: UrlCheckResult[];
+};
 
-function Flow({ initialToken, registry }: { initialToken: string; registry: string | null }) {
+function Flow({
+  initialToken,
+  registry,
+  confirmations,
+  storageDisclosure,
+}: {
+  initialToken: string;
+  registry: string | null;
+  confirmations: number;
+  storageDisclosure: string;
+}) {
   const { address, isConnected, chainId } = useAccount();
   const { disconnect } = useDisconnect();
   const { switchChainAsync } = useSwitchChain();
@@ -53,6 +82,15 @@ function Flow({ initialToken, registry }: { initialToken: string; registry: stri
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<Result | null>(null);
   const [anchorTx, setAnchorTx] = useState<string | null>(null);
+  const [pendingAnchor, setPendingAnchor] = useState<`0x${string}` | null>(null);
+  const currentWallet = useRef(address?.toLowerCase());
+  currentWallet.current = address?.toLowerCase();
+  useEffect(() => {
+    setResult(null);
+    setAnchorTx(null);
+    setPendingAnchor(null);
+    setError(null);
+  }, [address]);
 
   useEffect(() => {
     fetch("/api/auth/session")
@@ -68,7 +106,10 @@ function Flow({ initialToken, registry }: { initialToken: string; registry: stri
     setError(null);
     try {
       if (chainId !== appChain.id) await switchChainAsync({ chainId: appChain.id });
-      const { data } = await (await fetch("/api/auth/nonce")).json();
+      const nonceResponse = await fetch("/api/auth/nonce");
+      const nonceBody = await nonceResponse.json();
+      if (!nonceResponse.ok || !nonceBody.data?.nonce) throw new Error(nonceBody.error?.message ?? "Sign-in is temporarily unavailable. Retry shortly.");
+      const { data } = nonceBody;
       const message = createSiweMessage({
         domain: location.host,
         address,
@@ -81,7 +122,11 @@ function Flow({ initialToken, registry }: { initialToken: string; registry: stri
         expirationTime: new Date(Date.now() + 10 * 60_000),
       });
       const signature = await signMessageAsync({ message });
-      const r = await fetch("/api/auth/verify", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ message, signature }) });
+      const r = await fetch("/api/auth/verify", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ message, signature }),
+      });
       const j = await r.json();
       if (!r.ok) throw new Error(j.error?.message ?? "Sign-in failed");
       setSession(j.data.address);
@@ -94,13 +139,18 @@ function Flow({ initialToken, registry }: { initialToken: string; registry: stri
 
   async function submit(e: FormEvent) {
     e.preventDefault();
+    const submittingWallet = address?.toLowerCase();
     setBusy("submit");
     setError(null);
     try {
       const body = { token: token.trim(), ...Object.fromEntries(Object.entries(form).filter(([, v]) => v.trim())) };
       const r = await fetch("/api/proofs", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
       const j = await r.json();
-      if (!r.ok) throw new Error(j.error?.issues?.map((i: { path: string; message: string }) => `${i.path}: ${i.message}`).join("; ") || j.error?.message || "Submission failed");
+      if (!r.ok)
+        throw new Error(
+          j.error?.issues?.map((i: { path: string; message: string }) => `${i.path}: ${i.message}`).join("; ") || j.error?.message || "Submission failed",
+        );
+      if (currentWallet.current !== submittingWallet) throw new Error("Wallet changed during submission. Sign in and submit with the current wallet.");
       setResult(j.data);
     } catch (e) {
       setError((e as Error).message);
@@ -114,13 +164,43 @@ function Flow({ initialToken, registry }: { initialToken: string; registry: stri
     setBusy("anchor");
     setError(null);
     try {
-      const uri = `${location.origin}/api/tokens/${token.trim()}/proof`;
-      const has = await publicClient.readContract({ address: registry as `0x${string}`, abi: REGISTRY_ABI, functionName: "hasProof", args: [address!, token.trim() as `0x${string}`] });
-      const hash = await writeContractAsync({ address: registry as `0x${string}`, abi: REGISTRY_ABI, functionName: has ? "updateProof" : "submitProof", args: [token.trim() as `0x${string}`, result.metadataHash, uri], chainId: appChain.id });
-      await publicClient.waitForTransactionReceipt({ hash });
-      const r = await fetch("/api/proofs/anchor", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ token: token.trim(), txHash: hash }) });
+      if (!signedIn || !address) throw new Error("Sign in with the submitting wallet before anchoring.");
+      if (chainId !== appChain.id) {
+        await switchChainAsync({ chainId: appChain.id });
+        throw new Error("Network changed. Retry anchoring on the selected network.");
+      }
+      if (address.toLowerCase() !== result.creator.toLowerCase() || result.chainId !== appChain.id)
+        throw new Error("The wallet or network differs from the submitted document. Submit again with the correct wallet.");
+      let hash = pendingAnchor;
+      if (!hash) {
+        const has = await publicClient.readContract({
+          address: registry as `0x${string}`,
+          abi: REGISTRY_ABI,
+          functionName: "hasProof",
+          args: [address, result.token],
+        });
+        hash = await writeContractAsync({
+          address: registry as `0x${string}`,
+          abi: REGISTRY_ABI,
+          functionName: has ? "updateProof" : "submitProof",
+          args: [result.token, result.metadataHash, result.metadataUri],
+          chainId: appChain.id,
+        });
+        setPendingAnchor(hash);
+      }
+      const receipt = await publicClient.waitForTransactionReceipt({ hash, confirmations });
+      if (receipt.status !== "success") {
+        setPendingAnchor(null);
+        throw new Error("Anchoring transaction reverted. Review your wallet and retry.");
+      }
+      const r = await fetch("/api/proofs/anchor", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ token: result.token, txHash: hash }),
+      });
       if (!r.ok) throw new Error((await r.json()).error?.message ?? "Anchor verification failed");
       setAnchorTx(hash);
+      setPendingAnchor(null);
     } catch (e) {
       setError(walletErrorMessage(e));
     } finally {
@@ -149,20 +229,34 @@ function Flow({ initialToken, registry }: { initialToken: string; registry: stri
             </li>
           ))}
         </ul>
-        <p className="mt-6 text-sm text-fg-2">Your submission is now observable through VibeProof. Checks are re-run periodically; nothing here is a certification.</p>
+        <p className="mt-6 text-sm text-fg-2">
+          Your submission is now observable through VibeProof. Checks are re-run periodically; nothing here is a certification.
+        </p>
         <p className="mt-2 break-all font-mono text-xs text-muted">metadata hash {result.metadataHash}</p>
+        <p className="mt-2 break-all text-xs text-fg-2">Immutable document: {result.metadataUri}</p>
         <div className="mt-6 flex flex-wrap gap-3">
           <Link href={tokenPath(token.trim())} className="btn btn-primary h-10 px-5 text-sm">
             View Launch Passport
           </Link>
           {registry && !anchorTx ? (
             <button type="button" onClick={anchor} disabled={busy === "anchor"} className="btn btn-outline h-10 px-5 text-sm">
-              {busy === "anchor" ? <Loader2 className="size-4 animate-spin" /> : null} Anchor hash onchain (optional)
+              {busy === "anchor" ? <Loader2 className="size-4 animate-spin" /> : null}{" "}
+              {pendingAnchor ? "Retry anchor verification" : "Anchor hash onchain (optional)"}
             </button>
           ) : null}
-          {anchorTx ? <span className="self-center font-mono text-xs text-accent">Anchored · {shortAddress(anchorTx, 6, 4)}</span> : null}
+          {pendingAnchor && !anchorTx ? (
+            <span role="status" className="self-center break-all text-xs">
+              Transaction submitted: {pendingAnchor}. Verification is pending; retrying will reuse this transaction.
+            </span>
+          ) : null}
+          {anchorTx ? (
+            <a className="self-center text-xs text-accent" href={`/api/proofs/verify?txHash=${anchorTx}&token=${token}&creator=${address}`}>
+              Verify anchored document independently · {shortAddress(anchorTx, 6, 4)}
+            </a>
+          ) : null}
         </div>
         {error ? <p className="mt-4 text-sm text-attention">{error}</p> : null}
+        <ControlVerification token={token.trim()} />
       </div>
     );
 
@@ -194,15 +288,32 @@ function Flow({ initialToken, registry }: { initialToken: string; registry: stri
       </ol>
 
       <form onSubmit={submit} className="space-y-5" aria-disabled={!signedIn}>
+        <p className="rounded-xl border border-line p-3 text-sm text-fg-2">{storageDisclosure}</p>
         <Field label="Token contract" required>
-          <input value={token} onChange={(e) => setToken(e.target.value)} required pattern="^0x[0-9a-fA-F]{40}$" placeholder="0x…" className="input font-mono" aria-describedby="token-hint" />
+          <input
+            value={token}
+            onChange={(e) => setToken(e.target.value)}
+            required
+            pattern="^0x[0-9a-fA-F]{40}$"
+            placeholder="0x…"
+            className="input font-mono"
+            aria-describedby="token-hint"
+          />
           <p id="token-hint" className="mt-1 text-xs text-muted">
             Must be a token launched by the connected wallet.
           </p>
         </Field>
         {FIELDS.map((f) => (
           <Field key={f.k} label={f.label}>
-            <input type="url" inputMode="url" value={form[f.k] ?? ""} onChange={(e) => setForm((s) => ({ ...s, [f.k]: e.target.value }))} placeholder={f.ph} className="input" aria-describedby={`${f.k}-hint`} />
+            <input
+              type="url"
+              inputMode="url"
+              value={form[f.k] ?? ""}
+              onChange={(e) => setForm((s) => ({ ...s, [f.k]: e.target.value }))}
+              placeholder={f.ph}
+              className="input"
+              aria-describedby={`${f.k}-hint`}
+            />
             {f.hint ? (
               <p id={`${f.k}-hint`} className="mt-1 text-xs text-muted">
                 {f.hint}
@@ -211,7 +322,13 @@ function Flow({ initialToken, registry }: { initialToken: string; registry: stri
           </Field>
         ))}
         <Field label="Short description (shown as a creator claim)">
-          <textarea value={form.description ?? ""} onChange={(e) => setForm((s) => ({ ...s, description: e.target.value }))} maxLength={500} rows={3} className="input" />
+          <textarea
+            value={form.description ?? ""}
+            onChange={(e) => setForm((s) => ({ ...s, description: e.target.value }))}
+            maxLength={500}
+            rows={3}
+            className="input"
+          />
         </Field>
         {error ? (
           <p role="alert" className="text-sm text-attention">
@@ -229,7 +346,11 @@ function Flow({ initialToken, registry }: { initialToken: string; registry: stri
 function Step({ n, title, done, children }: { n: number; title: string; done: boolean; children: React.ReactNode }) {
   return (
     <li className="flex gap-4">
-      <span className={`mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full border font-mono text-xs ${done ? "border-accent/50 text-accent" : "border-line text-fg-2"}`}>{done ? <Check className="size-3.5" /> : n}</span>
+      <span
+        className={`mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full border font-mono text-xs ${done ? "border-accent/50 text-accent" : "border-line text-fg-2"}`}
+      >
+        {done ? <Check className="size-3.5" /> : n}
+      </span>
       <div className="flex-1">
         <h2 className="mb-2 font-medium">{title}</h2>
         {children}

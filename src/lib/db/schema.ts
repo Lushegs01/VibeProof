@@ -1,19 +1,5 @@
 import { sql } from "drizzle-orm";
-import {
-  bigint,
-  boolean,
-  index,
-  integer,
-  jsonb,
-  numeric,
-  pgTable,
-  primaryKey,
-  serial,
-  text,
-  timestamp,
-  uniqueIndex,
-  varchar,
-} from "drizzle-orm/pg-core";
+import { bigint, boolean, index, integer, jsonb, numeric, pgTable, primaryKey, serial, text, timestamp, uniqueIndex, varchar } from "drizzle-orm/pg-core";
 
 /**
  * Conventions
@@ -216,6 +202,7 @@ export const projectProofs = pgTable(
     submitterIsCreator: boolean("submitter_is_creator").notNull().default(false),
     metadataHash: varchar("metadata_hash", { length: 66 }),
     registryTx: varchar("registry_tx", { length: 66 }),
+    metadataUri: text("metadata_uri"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -411,3 +398,183 @@ export const authNonces = pgTable("auth_nonces", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   usedAt: timestamp("used_at", { withTimezone: true }),
 });
+
+/** Append-only execution receipts, independent of process-local telemetry. */
+export const indexerRuns = pgTable(
+  "indexer_runs",
+  {
+    id: text("id").primaryKey(),
+    status: text("status").notNull(),
+    report: jsonb("report").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("indexer_runs_time_idx").on(t.createdAt)],
+);
+
+export const operationalAlerts = pgTable("operational_alerts", {
+  key: text("key").primaryKey(),
+  state: jsonb("state").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Canonical bytes are immutable; historical submissions survive proof updates. */
+export const proofDocuments = pgTable(
+  "proof_documents",
+  {
+    hash: hash("hash").primaryKey(),
+    chainId: integer("chain_id").notNull(),
+    tokenAddress: addr("token_address").notNull(),
+    creatorAddress: addr("creator_address").notNull(),
+    canonical: text("canonical").notNull(),
+    uri: text("uri").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("proof_documents_history_idx").on(t.chainId, t.tokenAddress, t.createdAt)],
+);
+
+export const ownershipChallenges = pgTable(
+  "ownership_challenges",
+  {
+    id: text("id").primaryKey(),
+    chainId: integer("chain_id").notNull(),
+    tokenAddress: addr("token_address").notNull(),
+    creatorAddress: addr("creator_address").notNull(),
+    kind: text("kind").notNull(),
+    target: text("target").notNull(),
+    secretHash: hash("secret_hash").notNull(),
+    status: text("status").notNull().default("pending"),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    verifiedAt: timestamp("verified_at", { withTimezone: true }),
+    validUntil: timestamp("valid_until", { withTimezone: true }),
+    lastCheckedAt: timestamp("last_checked_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("ownership_challenge_asset_idx").on(t.chainId, t.tokenAddress, t.kind, t.target),
+    index("ownership_challenge_expiry_idx").on(t.status, t.validUntil),
+  ],
+);
+
+export const walletWatchlist = pgTable(
+  "wallet_watchlist",
+  {
+    wallet: addr("wallet").notNull(),
+    chainId: integer("chain_id").notNull(),
+    tokenAddress: addr("token_address").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    lastCheckedAt: timestamp("last_checked_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.wallet, t.chainId, t.tokenAddress] }), index("watchlist_asset_idx").on(t.chainId, t.tokenAddress)],
+);
+
+export const accountPlans = pgTable("account_plans", {
+  wallet: addr("wallet").primaryKey(),
+  plan: text("plan").notNull().default("free"),
+  subscriptionState: text("subscription_state").notNull().default("inactive"),
+  providerReference: text("provider_reference"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+export const usageCounters = pgTable(
+  "usage_counters",
+  {
+    wallet: addr("wallet").notNull(),
+    metric: text("metric").notNull(),
+    period: text("period").notNull(),
+    used: integer("used").notNull().default(0),
+  },
+  (t) => [primaryKey({ columns: [t.wallet, t.metric, t.period] })],
+);
+
+export const webhookSubscriptions = pgTable(
+  "webhook_subscriptions",
+  {
+    id: text("id").primaryKey(),
+    wallet: addr("wallet").notNull(),
+    endpoint: text("endpoint").notNull(),
+    /** Shared secret encrypted with WEBHOOK_ENCRYPTION_KEY (AES-256-GCM). */
+    encryptedSecret: text("encrypted_secret").notNull(),
+    filters: jsonb("filters").notNull(),
+    status: text("status").notNull().default("pending"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("webhooks_wallet_idx").on(t.wallet)],
+);
+export const webhookDeliveries = pgTable(
+  "webhook_deliveries",
+  {
+    id: text("id").primaryKey(),
+    subscriptionId: text("subscription_id")
+      .notNull()
+      .references(() => webhookSubscriptions.id),
+    eventKey: text("event_key").notNull(),
+    payload: jsonb("payload").notNull(),
+    status: text("status").notNull().default("pending"),
+    attempts: integer("attempts").notNull().default(0),
+    nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true }).notNull().defaultNow(),
+    lastError: text("last_error"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("webhook_delivery_dedupe_uq").on(t.subscriptionId, t.eventKey), index("webhook_delivery_queue_idx").on(t.status, t.nextAttemptAt)],
+);
+
+export const revokedSessions = pgTable("revoked_sessions", {
+  hash: text("hash").primaryKey(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+});
+
+export const developerKeys = pgTable(
+  "developer_keys",
+  {
+    hash: text("hash").primaryKey(),
+    wallet: addr("wallet").notNull(),
+    label: text("label").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  },
+  (t) => [index("developer_keys_wallet_idx").on(t.wallet)],
+);
+
+export const contractObservations = pgTable(
+  "contract_observations",
+  {
+    id: serial("id").primaryKey(),
+    chainId: integer("chain_id").notNull(),
+    tokenAddress: addr("token_address").notNull(),
+    blockNumber: bigint("block_number", { mode: "bigint" }).notNull(),
+    blockHash: hash("block_hash").notNull(),
+    analysis: jsonb("analysis").notNull(),
+    observedAt: timestamp("observed_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("contract_observations_block_uq").on(t.chainId, t.tokenAddress, t.blockHash),
+    index("contract_observations_history_idx").on(t.chainId, t.tokenAddress, t.observedAt),
+  ],
+);
+
+/** Persist monitoring baselines across serverless process restarts. */
+export const monitoringSamples = pgTable(
+  "monitoring_samples",
+  {
+    chainId: integer("chain_id").notNull(),
+    observedAt: timestamp("observed_at", { withTimezone: true }).notNull().defaultNow(),
+    metrics: jsonb("metrics").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.chainId, t.observedAt] })],
+);
+/** Condition transitions and queued deliveries commit together; send outside row locks. */
+export const operationalAlertDeliveries = pgTable(
+  "operational_alert_deliveries",
+  {
+    id: text("id").primaryKey(),
+    sequence: serial("sequence").notNull().unique(),
+    alertKey: text("alert_key").notNull(),
+    payload: jsonb("payload").notNull(),
+    status: text("status").notNull().default("pending"),
+    attempts: integer("attempts").notNull().default(0),
+    nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true }).notNull().defaultNow(),
+    leaseToken: text("lease_token"),
+    lastError: text("last_error"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("operational_delivery_due_idx").on(t.status, t.nextAttemptAt), index("operational_delivery_order_idx").on(t.alertKey, t.sequence)],
+);

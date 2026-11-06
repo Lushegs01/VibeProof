@@ -20,6 +20,7 @@ export type MetadataWorkerOptions = {
   website?: typeof checkWebsite;
   github?: typeof checkGithub;
   shouldStop?: () => boolean;
+  onResult?: (status: MetadataResult["status"]) => void;
 };
 
 const num = (k: string) => (process.env[k] ? Number(process.env[k]) : undefined);
@@ -83,12 +84,25 @@ export async function processMetadataQueue(db: DB, chainId: number, opts: Metada
           })
           .where(and(eq(tokenMetadata.chainId, chainId), eq(tokenMetadata.tokenAddress, r.tokenAddress)));
         n++;
-        log(res.status === "ok" ? "debug" : "info", "indexer.metadata_fetch", { chainId, token: r.tokenAddress, status: res.status, gateway: res.gateway ?? null, cidVerified: res.cidVerified ?? null, digestMatch: res.digestMatch ?? null, error: res.error ?? null, retry });
+        opts.onResult?.(res.status);
+        log(res.status === "ok" ? "debug" : "info", "indexer.metadata_fetch", {
+          chainId,
+          token: r.tokenAddress,
+          status: res.status,
+          gateway: res.gateway ?? null,
+          cidVerified: res.cidVerified ?? null,
+          digestMatch: res.digestMatch ?? null,
+          error: res.error ?? null,
+          retry,
+        });
       }),
     );
   }
   const enrich = opts.enrichPerTick ?? num("METADATA_ENRICH_PER_TICK") ?? 2;
-  if (enrich > 0 && !opts.shouldStop?.()) await enrichClaimedLinks(db, chainId, enrich, opts).catch((e) => log("warn", "indexer.metadata_enrich_failed", { error: e instanceof Error ? e.message : String(e) }));
+  if (enrich > 0 && !opts.shouldStop?.())
+    await enrichClaimedLinks(db, chainId, enrich, opts).catch((e) =>
+      log("warn", "indexer.metadata_enrich_failed", { error: e instanceof Error ? e.message : String(e) }),
+    );
   return n;
 }
 
@@ -114,8 +128,20 @@ export async function enrichClaimedLinks(db: DB, chainId: number, limit: number,
       c.evidence = { ...c.evidence, detail: [c.evidence.detail, "Link taken from the creator's launch metadata (a creator claim)."].filter(Boolean).join(" ") };
     }
     if (checks.length)
-      await db.insert(verificationChecks).values(checks.map((c) => ({ chainId, tokenAddress: r.token, checkType: `metadata_${c.type}`, status: c.state, evidence: c, observedAt: new Date(c.evidence.observedAt) })));
-    await db.update(tokenMetadata).set({ enrichedAt: new Date() }).where(and(eq(tokenMetadata.chainId, chainId), eq(tokenMetadata.tokenAddress, r.token)));
+      await db.insert(verificationChecks).values(
+        checks.map((c) => ({
+          chainId,
+          tokenAddress: r.token,
+          checkType: `metadata_${c.type}`,
+          status: c.state,
+          evidence: c,
+          observedAt: new Date(c.evidence.observedAt),
+        })),
+      );
+    await db
+      .update(tokenMetadata)
+      .set({ enrichedAt: new Date() })
+      .where(and(eq(tokenMetadata.chainId, chainId), eq(tokenMetadata.tokenAddress, r.token)));
     if (checks.length) log("info", "indexer.metadata_enriched", { chainId, token: getAddress(r.token), checks: checks.map((c) => `${c.type}:${c.state}`) });
   }
 }

@@ -1,0 +1,4 @@
+Executed after clean npm ci:
+- npm audit --json: zero vulnerabilities
+- drizzle-kit check: passed
+- import { createSandbox } from @metamask/utils/node; createSandbox(...).withinSandbox(...): passed (actual UUID v4 consumer)

@@ -4,8 +4,9 @@ import { getProvider, type ChainProvider } from "../chain/provider";
 import { getDb, schema } from "../db/client";
 import { ERC20_ABI } from "../vibe/abis";
 import { checkGithub, checkWebsite, socialClaim, type UrlCheckResult } from "../proof/checks";
-import { proofMetadataHash, type ProofSubmission } from "../proof/metadata";
+import { canonicalProofMetadata, type ProofSubmission } from "../proof/metadata";
 import { invalidatePassport } from "./token-service";
+import { evidenceStore } from "../proof/storage";
 import { log } from "../util/log";
 import { serviceNetwork } from "./network";
 
@@ -32,7 +33,11 @@ export class ProofError extends Error {
  *  - the address returned by the token's owner() (for non-Vibe tokens / fallbacks).
  * Returns the basis used, for display.
  */
-export async function authorizeSubmitter(token: Address, submitter: Address, provider: ChainProvider = getProvider(serviceNetwork().slug)): Promise<"launch_creator" | "contract_owner" | null> {
+export async function authorizeSubmitter(
+  token: Address,
+  submitter: Address,
+  provider: ChainProvider = getProvider(serviceNetwork().slug),
+): Promise<"launch_creator" | "contract_owner" | null> {
   const db = getDb();
   if (db) {
     const l = await db.query.launches.findFirst({ where: and(eq(launches.chainId, chainId()), eq(launches.tokenAddress, token.toLowerCase())) });
@@ -56,7 +61,28 @@ export async function runProofChecks(token: Address, p: Partial<ProofSubmission>
   if (p.twitterUrl) jobs.push(Promise.resolve(socialClaim("twitter", p.twitterUrl)));
   if (p.discordUrl) jobs.push(Promise.resolve(socialClaim("discord", p.discordUrl)));
   const settled = await Promise.allSettled(jobs);
-  return settled.flatMap((s) => (s.status === "fulfilled" ? [s.value] : []));
+  const targets = (
+    [
+      ["website", p.websiteUrl],
+      ["github", p.githubUrl],
+      ["demo", p.demoUrl],
+      ["docs", p.docsUrl],
+      ["twitter", p.twitterUrl],
+      ["discord", p.discordUrl],
+    ] as const
+  ).filter(([, url]) => !!url);
+  return settled.map((result, i) =>
+    result.status === "fulfilled"
+      ? result.value
+      : {
+          type: targets[i][0],
+          url: targets[i][1]!,
+          state: "unavailable" as const,
+          summary: "Check could not complete",
+          facts: {},
+          evidence: { source: "VibeProof checks", method: "Failed external check", observedAt: new Date().toISOString() },
+        },
+  );
 }
 
 export async function submitProof(submitter: Address, input: ProofSubmission) {
@@ -65,8 +91,14 @@ export async function submitProof(submitter: Address, input: ProofSubmission) {
   const token = getAddress(input.token);
   const basis = await authorizeSubmitter(token, submitter);
   if (!basis) throw new ProofError(403, "not_creator", "Only the launch creator (or the contract's current owner) can submit project proof for this token.");
-  const metadataHash = proofMetadataHash({ ...input, chainId: chainId(), creator: submitter });
+  const canonical = canonicalProofMetadata({ ...input, chainId: chainId(), creator: submitter });
+  const { hash: metadataHash, uri: metadataUri } = await evidenceStore().put(new TextEncoder().encode(canonical));
   const a = token.toLowerCase();
+  // Retain the exact historical bytes for every backend, including pinned IPFS submissions.
+  await db
+    .insert(schema.proofDocuments)
+    .values({ hash: metadataHash, chainId: chainId(), tokenAddress: a, creatorAddress: submitter.toLowerCase(), canonical, uri: metadataUri })
+    .onConflictDoNothing();
   const values = {
     websiteUrl: input.websiteUrl ?? null,
     githubUrl: input.githubUrl ?? null,
@@ -78,6 +110,7 @@ export async function submitProof(submitter: Address, input: ProofSubmission) {
     submittedBy: submitter.toLowerCase(),
     submitterIsCreator: basis === "launch_creator",
     metadataHash,
+    metadataUri,
     updatedAt: new Date(),
   };
   await db
@@ -87,16 +120,27 @@ export async function submitProof(submitter: Address, input: ProofSubmission) {
   const checks = await runProofChecks(token, input);
   await storeChecks(a, checks);
   const n = [input.websiteUrl, input.githubUrl, input.demoUrl, input.docsUrl, input.twitterUrl, input.discordUrl].filter(Boolean).length;
-  await db.insert(feedEvents).values({ chainId: chainId(), tokenAddress: a, kind: "proof", message: `Project proof submitted (${n} link${n === 1 ? "" : "s"})` });
+  await db
+    .insert(feedEvents)
+    .values({ chainId: chainId(), tokenAddress: a, kind: "proof", message: `Project proof submitted (${n} link${n === 1 ? "" : "s"})` });
   await invalidatePassport(a);
   log("info", "proof.submitted", { token: a, basis, checks: checks.length });
-  return { metadataHash, basis, checks };
+  return { metadataHash, metadataUri, basis, checks, token, creator: submitter, chainId: chainId() };
 }
 
 export async function storeChecks(tokenLower: string, checks: UrlCheckResult[]) {
   const db = getDb();
   if (!db || !checks.length) return;
-  await db.insert(verificationChecks).values(checks.map((c) => ({ chainId: chainId(), tokenAddress: tokenLower, checkType: c.type, status: c.state, evidence: c, observedAt: new Date(c.evidence.observedAt) })));
+  await db.insert(verificationChecks).values(
+    checks.map((c) => ({
+      chainId: chainId(),
+      tokenAddress: tokenLower,
+      checkType: c.type,
+      status: c.state,
+      evidence: c,
+      observedAt: new Date(c.evidence.observedAt),
+    })),
+  );
 }
 
 export async function recheckProof(token: Address) {
@@ -130,8 +174,8 @@ export const PROOF_UPDATED_EVENT = parseAbiItem(
  * the tx must have succeeded and contain a ProofSubmitted/ProofUpdated log from the
  * configured registry with matching creator, token and metadata hash.
  */
-export async function recordAnchor(token: Address, txHash: Hash) {
-  const registry = process.env.NEXT_PUBLIC_REGISTRY_ADDRESS;
+export async function recordAnchor(token: Address, txHash: Hash, opts?: { retrieve?: typeof import("../proof/storage").retrieveEvidence }) {
+  const registry = serviceNetwork().slug === "robinhood-mainnet" ? process.env.ROBINHOOD_MAINNET_REGISTRY_ADDRESS : process.env.NEXT_PUBLIC_REGISTRY_ADDRESS;
   if (!registry) throw new ProofError(503, "registry_unconfigured", "No VibeProofRegistry address is configured.");
   const db = getDb();
   if (!db) throw new ProofError(503, "db_unavailable", "Proof storage is not configured.");
@@ -145,19 +189,45 @@ export async function recordAnchor(token: Address, txHash: Hash) {
     if (l.address.toLowerCase() !== registry.toLowerCase()) return false;
     try {
       const ev = decodeEventLog({ abi: [PROOF_SUBMITTED_EVENT, PROOF_UPDATED_EVENT], data: l.data, topics: l.topics as never });
-      return ev.args.creator.toLowerCase() === proof.submittedBy && ev.args.token.toLowerCase() === a && ev.args.metadataHash === proof.metadataHash;
+      return (
+        ev.args.creator.toLowerCase() === proof.submittedBy &&
+        ev.args.token.toLowerCase() === a &&
+        ev.args.metadataHash === proof.metadataHash &&
+        (!proof.metadataUri || ev.args.metadataURI === proof.metadataUri)
+      );
     } catch {
       return false;
     }
   });
   if (!match) throw new ProofError(400, "no_matching_event", "Transaction does not contain a matching registry event for this proof.");
-  await db.update(projectProofs).set({ registryTx: txHash, updatedAt: new Date() }).where(and(eq(projectProofs.chainId, chainId()), eq(projectProofs.tokenAddress, a)));
+  if (proof.metadataUri) {
+    const { verifyProof } = await import("../proof/verify");
+    const required = Number(process.env.PROOF_CONFIRMATIONS ?? 12);
+    if (!Number.isSafeInteger(required) || required < 1) throw new ProofError(503, "invalid_finality", "Invalid proof confirmation policy.");
+    try {
+      await verifyProof(
+        { txHash, registry: getAddress(registry), token, creator: getAddress(proof.submittedBy), chainId: chainId(), confirmations: BigInt(required) },
+        getProvider(serviceNetwork().slug),
+        opts?.retrieve,
+      );
+    } catch (e) {
+      const { ProofVerificationError } = await import("../proof/verify");
+      if (e instanceof ProofVerificationError) throw new ProofError(409, e.code, e.message);
+      throw e;
+    }
+  }
+  const updated = await db
+    .update(projectProofs)
+    .set({ registryTx: txHash, updatedAt: new Date() })
+    .where(and(eq(projectProofs.chainId, chainId()), eq(projectProofs.tokenAddress, a), eq(projectProofs.metadataHash, proof.metadataHash)))
+    .returning();
+  if (!updated.length) throw new ProofError(409, "proof_changed", "Proof changed while verifying; retry the current commitment.");
   await invalidatePassport(a);
   return { registryTx: txHash };
 }
 
 /** Re-run checks for proofs whose latest check is older than `maxAgeHours`. Called by the indexer loop. */
-export async function recheckStaleProofs(limit = 5, maxAgeHours = 6) {
+export async function recheckStaleProofs(limit = 5, maxAgeHours = 6, onFailure?: (error: unknown) => void) {
   const db = getDb();
   if (!db) return 0;
   const rows = await db.execute<{ token_address: string }>(sql`
@@ -171,6 +241,7 @@ export async function recheckStaleProofs(limit = 5, maxAgeHours = 6) {
       await recheckProof(getAddress(r.token_address));
       n++;
     } catch (e) {
+      onFailure?.(e);
       log("warn", "proof.recheck_failed", { token: r.token_address, error: e instanceof Error ? e.message : String(e) });
     }
   }

@@ -1,0 +1,30 @@
+
+> vibeproof@0.1.0 test:e2e
+> playwright test
+
+[WebServer] (node:3278) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:3291) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 12 tests using 1 worker
+
+(node:3305) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓   1 [desktop] › tests/e2e/passport-flow.spec.ts:6:3 › core flow: search → passport → contract → creator → product → activity → share › a new user can inspect a launch end to end (5.9s)
+  ✓   2 [desktop] › tests/e2e/passport-flow.spec.ts:72:3 › core flow: search → passport → contract → creator → product → activity → share › unavailable data is never shown as zero and invalid addresses 404 (1.1s)
+  ✓   3 [desktop] › tests/e2e/passport-flow.spec.ts:78:3 › core flow: search → passport → contract → creator → product → activity → share › watchlist persists locally (1.8s)
+  ✓   4 [desktop] › tests/e2e/passport-flow.spec.ts:86:3 › core flow: search → passport → contract → creator → product → activity → share › discover explains its sorting and never ranks by a score (1.1s)
+  ✓   5 [desktop] › tests/e2e/passport-flow.spec.ts:93:3 › core flow: search → passport → contract → creator → product → activity → share › keyboard: ⌘K opens search, Escape closes it (1.8s)
+  ✓   6 [desktop] › tests/e2e/passport-flow.spec.ts:103:1 › demo operational and account boundaries remain explicit (1.2s)
+(node:3625) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓   7 [mobile] › tests/e2e/passport-flow.spec.ts:6:3 › core flow: search → passport → contract → creator → product → activity → share › a new user can inspect a launch end to end (4.1s)
+  ✓   8 [mobile] › tests/e2e/passport-flow.spec.ts:72:3 › core flow: search → passport → contract → creator → product → activity → share › unavailable data is never shown as zero and invalid addresses 404 (1.8s)
+  ✓   9 [mobile] › tests/e2e/passport-flow.spec.ts:78:3 › core flow: search → passport → contract → creator → product → activity → share › watchlist persists locally (1.7s)
+  ✓  10 [mobile] › tests/e2e/passport-flow.spec.ts:86:3 › core flow: search → passport → contract → creator → product → activity → share › discover explains its sorting and never ranks by a score (1.1s)
+  -  11 [mobile] › tests/e2e/passport-flow.spec.ts:93:3 › core flow: search → passport → contract → creator → product → activity → share › keyboard: ⌘K opens search, Escape closes it
+  ✓  12 [mobile] › tests/e2e/passport-flow.spec.ts:103:1 › demo operational and account boundaries remain explicit (1.1s)
+
+  1 skipped
+  11 passed (26.8s)

@@ -9,7 +9,7 @@ import { ERC20_ABI, TRANSFER_EVENT } from "../lib/vibe/abis";
 import type { VibeDeployment } from "../lib/vibe/contracts";
 import { VibeAdapter } from "../lib/launchpads/vibe";
 import type { DecodedGraduation, DecodedLaunch, DecodedTrade, LaunchpadAdapter, LaunchpadDeployment } from "../lib/launchpads/types";
-import { log } from "../lib/util/log";
+import { log, metrics } from "../lib/util/log";
 import { DEAD_ADDRESSES, ZERO_ADDRESS } from "../lib/util/address";
 import { displayText } from "../lib/util/sanitize";
 import { balanceDeltas, decodeTransfer, type DecodedTransfer } from "./decode";
@@ -61,12 +61,22 @@ export type TickResult = {
   backfilled: number;
   backfillFailed: number;
   metadataFetched: number;
+  metadataFailed?: number;
+  failures?: string[];
   reorg: { detected: boolean; ancestor: bigint | null };
   skipped?: string;
 };
 
 type LaunchRef = { token: string; curve: string | null; creator: string; pair: string | null; createdBlock: bigint };
-export type TokenMeta = { name: string | null; symbol: string | null; decimals: number | null; totalSupply: bigint | null; status: "ok" | "partial" | "error"; error: string | null; block: bigint | null };
+export type TokenMeta = {
+  name: string | null;
+  symbol: string | null;
+  decimals: number | null;
+  totalSupply: bigint | null;
+  status: "ok" | "partial" | "error";
+  error: string | null;
+  block: bigint | null;
+};
 type Pair = { adapter: LaunchpadAdapter; dep: LaunchpadDeployment };
 
 export class ReorgDetectedError extends Error {
@@ -98,6 +108,16 @@ function isAdapterList(x: unknown[]): x is LaunchpadAdapter[] {
  *  - A token's counters are presented only when its complete history from launch is stored.
  */
 export class VibeIndexer {
+  private reorgTelemetry = { detected: 0, recovered: 0, failed: 0, transactionFailures: 0 };
+  private async transaction<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
+    try {
+      return await this.db.transaction(fn);
+    } catch (error) {
+      this.reorgTelemetry.transactionFailures++;
+      metrics.inc("db.indexer_transaction_failures");
+      throw error;
+    }
+  }
   private ts: TimestampResolver;
   private covered = new Map<string, LaunchRef>();
   private curves = new Map<string, LaunchRef>();
@@ -115,7 +135,14 @@ export class VibeIndexer {
     adaptersOrDeployments?: LaunchpadAdapter[] | VibeDeployment[],
   ) {
     const list = adaptersOrDeployments ?? [];
-    this.adapters = list.length === 0 && adaptersOrDeployments ? [] : isAdapterList(list) ? list : list.length ? [new VibeAdapter(provider.chainId, list as VibeDeployment[])] : [new VibeAdapter(provider.chainId)];
+    this.adapters =
+      list.length === 0 && adaptersOrDeployments
+        ? []
+        : isAdapterList(list)
+          ? list
+          : list.length
+            ? [new VibeAdapter(provider.chainId, list as VibeDeployment[])]
+            : [new VibeAdapter(provider.chainId)];
     this.pairs = this.adapters.flatMap((adapter) => adapter.deployments().map((dep) => ({ adapter, dep })));
     this.keys = cursorKeys(provider.chainId);
     this.ts = new TimestampResolver(provider, new DbHeaderStore(db, provider.chainId));
@@ -163,7 +190,13 @@ export class VibeIndexer {
       if (c === null) launchesThrough = start - 1n < launchesThrough ? start - 1n : launchesThrough;
       else if (c < launchesThrough) launchesThrough = c;
     }
-    const result: TickResult = { ...base, newLaunches, activityThrough: (await getCursor(this.db, this.keys.activity)) ?? start - 1n, launchesThrough, reorg: { detected: reorg !== null, ancestor: reorg } };
+    const result: TickResult = {
+      ...base,
+      newLaunches,
+      activityThrough: (await getCursor(this.db, this.keys.activity)) ?? start - 1n,
+      launchesThrough,
+      reorg: { detected: reorg !== null, ancestor: reorg },
+    };
     if (!this.stop()) {
       await this.loadCovered();
       // The tail never passes a block whose launches are not indexed yet: a token launched there
@@ -177,20 +210,47 @@ export class VibeIndexer {
       result.backfilled = b.done;
       result.backfillFailed = b.failed;
     }
-    if (!this.stop() && this.opts.metadata !== false) result.metadataFetched = await processMetadataQueue(this.db, this.chainId, { ...(this.opts.metadata || {}), shouldStop: this.opts.shouldStop }).catch((e) => (log("warn", "indexer.metadata_worker_failed", { error: errText(e) }), 0));
-    if (!this.stop()) await this.repairTokenMeta(this.opts.tokenMetaRepairPerTick ?? 200).catch((e) => log("warn", "indexer.token_meta_repair_failed", { error: errText(e) }));
-    if (!this.stop()) await this.analyzeNewLaunches(this.opts.analyzePerTick ?? envNum("INDEXER_ANALYZE_PER_TICK") ?? 3).catch((e) => log("warn", "indexer.analysis_failed", { error: errText(e) }));
+    result.failures = [];
+    result.metadataFailed = 0;
+    if (!this.stop() && this.opts.metadata !== false)
+      result.metadataFetched = await processMetadataQueue(this.db, this.chainId, {
+        ...(this.opts.metadata || {}),
+        shouldStop: this.opts.shouldStop,
+        onResult: (status) => {
+          if (status !== "ok") result.metadataFailed!++;
+          if (this.opts.metadata) this.opts.metadata.onResult?.(status);
+        },
+      }).catch((e) => (result.failures!.push("metadata worker failed"), log("warn", "indexer.metadata_worker_failed", { error: errText(e) }), 0));
+    if (result.metadataFailed) result.failures.push(`${result.metadataFailed} metadata job(s) failed`);
+    if (!this.stop())
+      await this.repairTokenMeta(this.opts.tokenMetaRepairPerTick ?? 200).catch((e) => {
+        result.failures!.push("token metadata repair failed");
+        log("warn", "indexer.token_meta_repair_failed", { error: errText(e) });
+      });
+    if (!this.stop())
+      await this.analyzeNewLaunches(this.opts.analyzePerTick ?? envNum("INDEXER_ANALYZE_PER_TICK") ?? 3).catch((e) => {
+        result.failures!.push("contract analysis failed");
+        log("warn", "indexer.analysis_failed", { error: errText(e) });
+      });
 
     this.stats.ticks++;
     this.stats.launches += newLaunches;
     this.stats.events += result.newEvents;
     this.stats.backfilled += result.backfilled;
     this.stats.ms += Date.now() - t0;
-    await this.heartbeat({ ok: true, head, newLaunches, newEvents: result.newEvents, backfilled: result.backfilled, reorg: reorg !== null }).catch(() => {});
+    await this.heartbeat({
+      ok: !result.failures.length && !result.backfillFailed,
+      error: result.failures.length ? result.failures.join("; ") : result.backfillFailed ? "Backfill jobs failed" : undefined,
+      head,
+      newLaunches,
+      newEvents: result.newEvents,
+      backfilled: result.backfilled,
+      reorg: reorg !== null,
+    });
     return result;
   }
 
-  /** Heartbeat for /api/health (readable from any process). Never throws into the tick. */
+  /** Persist health for other processes; storage failures propagate to the caller. */
   async heartbeat(r: { ok: boolean; head?: bigint; newLaunches?: number; newEvents?: number; backfilled?: number; reorg?: boolean; error?: unknown }) {
     const now = new Date();
     const provider = this.provider.stats?.() ?? null;
@@ -199,7 +259,12 @@ export class VibeIndexer {
       state: r.ok ? "running" : "error",
       lastTickAt: now,
       provider: provider as never,
-      stats: { ...this.stats, launchBlocks: this.stats.launchBlocks.toString(), tailBlocks: this.stats.tailBlocks.toString() } as never,
+      stats: {
+        ...this.stats,
+        monitoring: this.reorgTelemetry,
+        launchBlocks: this.stats.launchBlocks.toString(),
+        tailBlocks: this.stats.tailBlocks.toString(),
+      } as never,
       updatedAt: now,
     };
     if (r.head !== undefined) set.headBlock = r.head;
@@ -221,7 +286,7 @@ export class VibeIndexer {
     const env = envBig("INDEXER_ACTIVITY_START");
     const back = this.opts.initialBackfillBlocks ?? envBig("INDEXER_INITIAL_BACKFILL_BLOCKS") ?? 100_000n;
     const start = env ?? (head > back ? head - back : 1n);
-    await this.db.transaction(async (tx) => {
+    await this.transaction(async (tx) => {
       await setCursor(tx, this.keys.activityStart, start);
       await setCursor(tx, this.keys.activity, start - 1n);
       // Launches already indexed at/after the start are fully covered by the tail from here on.
@@ -303,8 +368,18 @@ export class VibeIndexer {
       log("error", "indexer.reorg_deeper_than_search", { network: this.provider.slug, checked, rewindTo: ancestor });
     }
     log("warn", "indexer.reorg_detected", { network: this.provider.slug, newestCheckpoint: newest.blockNumber, ancestor, checkedBlocks: checked });
-    await this.rollback(ancestor);
-    await this.heartbeat({ ok: true, reorg: true }).catch(() => {});
+    this.reorgTelemetry.detected++;
+    metrics.inc("indexer.reorg_detected");
+    try {
+      await this.rollback(ancestor);
+      this.reorgTelemetry.recovered++;
+      metrics.inc("indexer.reorg_recovered");
+    } catch (error) {
+      this.reorgTelemetry.failed++;
+      metrics.inc("indexer.reorg_recovery_failed");
+      throw new Error(`Reorg recovery failed: ${errText(error)}`, { cause: error });
+    }
+    await this.heartbeat({ ok: true, reorg: true });
     return ancestor;
   }
 
@@ -315,15 +390,33 @@ export class VibeIndexer {
    */
   async rollback(ancestor: bigint) {
     const c = this.chainId;
-    await this.db.transaction(async (tx) => {
-      const keys = await tx.execute<{ key: string; last_block: string }>(sql`select key, last_block::text from indexer_state where key like ${"%:" + c} or key like ${"%:" + c + ":%"} for update`);
-      const deleted = await tx.execute<{ token_address: string; wallet_address: string | null; counterparty: string | null; event_type: string; amount: string | null }>(sql`
+    await this.transaction(async (tx) => {
+      const keys = await tx.execute<{ key: string; last_block: string }>(
+        sql`select key, last_block::text from indexer_state where key like ${"%:" + c} or key like ${"%:" + c + ":%"} for update`,
+      );
+      const deleted = await tx.execute<{
+        token_address: string;
+        wallet_address: string | null;
+        counterparty: string | null;
+        event_type: string;
+        amount: string | null;
+      }>(sql`
         delete from transaction_events where chain_id = ${c} and block_number > ${ancestor}
         returning token_address, wallet_address, counterparty, event_type, amount::text`);
       const rows = [...deleted];
       const transfers = rows.filter((r) => r.event_type === "transfer" && r.wallet_address && r.counterparty && r.amount !== null);
-      const deltas = balanceDeltas(transfers.map((r) => ({ token: r.token_address as Address, from: r.counterparty as Address, to: r.wallet_address as Address, value: BigInt(r.amount!) })));
-      await this.applyHolderDeltas(tx, [...deltas.entries()].map(([k, v]) => [k, -v] as [string, bigint]));
+      const deltas = balanceDeltas(
+        transfers.map((r) => ({
+          token: r.token_address as Address,
+          from: r.counterparty as Address,
+          to: r.wallet_address as Address,
+          value: BigInt(r.amount!),
+        })),
+      );
+      await this.applyHolderDeltas(
+        tx,
+        [...deltas.entries()].map(([k, v]) => [k, -v] as [string, bigint]),
+      );
       const affected = new Set(rows.map((r) => r.token_address));
 
       const goneLaunches = await tx.execute<{ token_address: string; creator_address: string }>(sql`
@@ -396,18 +489,22 @@ export class VibeIndexer {
     let total = 0;
     while (from <= head && !this.stop()) {
       const to = from + span - 1n < head ? from + span - 1n : head;
-      const logs = await getLogsAdaptive(this.provider, { address: dep.factory, events: adapter.getLaunchEvents(dep) }, from, to, { chunk: this.opts.launchChunk, shouldStop: this.opts.shouldStop }).catch((e) => {
+      const logs = await getLogsAdaptive(this.provider, { address: dep.factory, events: adapter.getLaunchEvents(dep) }, from, to, {
+        chunk: this.opts.launchChunk,
+        shouldStop: this.opts.shouldStop,
+      }).catch((e) => {
         if (e instanceof StoppedError) return null;
         throw e;
       });
       if (logs === null) break;
       const decoded = logs.map((l) => adapter.decodeLaunch(l, dep)).filter((x): x is DecodedLaunch => !!x);
-      if (logs.length !== decoded.length) log("warn", "indexer.undecodable_launch_logs", { network: this.provider.slug, deployment: dep.id, count: logs.length - decoded.length, from, to });
+      if (logs.length !== decoded.length)
+        log("warn", "indexer.undecodable_launch_logs", { network: this.provider.slug, deployment: dep.id, count: logs.length - decoded.length, from, to });
       const meta = await this.fetchTokenMeta(decoded);
       await this.ts.resolve(decoded);
       const header = await this.rangeEndHeader(to, logs);
       if (cursor !== null) await this.assertCanonical(cursor);
-      await this.db.transaction(async (tx) => {
+      await this.transaction(async (tx) => {
         await this.writeLaunches(tx, decoded, meta, activityStart);
         await writeCheckpoint(tx, this.chainId, header);
         await advanceCursor(tx, key, cursor, to);
@@ -423,7 +520,13 @@ export class VibeIndexer {
   }
 
   private refOf(d: DecodedLaunch): LaunchRef {
-    return { token: lc(d.token), curve: d.curve ? lc(d.curve) : null, creator: lc(d.creator), pair: d.pairCurrency ? lc(d.pairCurrency) : null, createdBlock: d.blockNumber };
+    return {
+      token: lc(d.token),
+      curve: d.curve ? lc(d.curve) : null,
+      creator: lc(d.creator),
+      pair: d.pairCurrency ? lc(d.pairCurrency) : null,
+      createdBlock: d.blockNumber,
+    };
   }
 
   /**
@@ -446,12 +549,15 @@ export class VibeIndexer {
       let res: Awaited<ReturnType<ChainProvider["multicall"]>> | null = null;
       let failure: string | null = null;
       try {
-        res = await this.provider.multicall({ contracts: batch.flatMap((b) => fns.map((functionName) => ({ address: b.token, abi: ERC20_ABI as Abi, functionName }))) });
+        res = await this.provider.multicall({
+          contracts: batch.flatMap((b) => fns.map((functionName) => ({ address: b.token, abi: ERC20_ABI as Abi, functionName }))),
+        });
       } catch (e) {
         failure = errText(e);
       }
       batch.forEach((b, j) => {
-        if (!res) return out.set(lc(b.token), { name: b.name, symbol: b.symbol, decimals: null, totalSupply: null, status: "error", error: failure, block: null });
+        if (!res)
+          return out.set(lc(b.token), { name: b.name, symbol: b.symbol, decimals: null, totalSupply: null, status: "error", error: failure, block: null });
         const r = fns.map((_, k) => res![j * 4 + k]);
         let rpcError: string | null = null;
         const val = (k: number) => {
@@ -573,7 +679,15 @@ export class VibeIndexer {
         .onConflictDoUpdate({
           target: [launches.chainId, launches.tokenAddress],
           // Same launch replayed: refresh fields added by newer versions; never touch status.
-          set: { blockHash: sql`excluded.block_hash`, logIndex: sql`excluded.log_index`, version: sql`excluded.version`, eventName: sql`excluded.event_name`, metadataDigest: sql`excluded.metadata_digest`, createdAtExact: sql`excluded.created_at_exact`, pairCurrency: sql`excluded.pair_currency` },
+          set: {
+            blockHash: sql`excluded.block_hash`,
+            logIndex: sql`excluded.log_index`,
+            version: sql`excluded.version`,
+            eventName: sql`excluded.event_name`,
+            metadataDigest: sql`excluded.metadata_digest`,
+            createdAtExact: sql`excluded.created_at_exact`,
+            pairCurrency: sql`excluded.pair_currency`,
+          },
         })
         .returning({ token: launches.tokenAddress, fresh: sql<boolean>`xmax = 0` });
       const fresh = new Set(inserted.filter((r) => r.fresh).map((r) => r.token));
@@ -581,19 +695,40 @@ export class VibeIndexer {
       if (feed.length)
         await tx
           .insert(feedEvents)
-          .values(feed.map((d) => ({ chainId: c, tokenAddress: lc(d.token), kind: "launch", message: `Launched via ${d.launchpad === "vibe" ? "vibe/vibe" : d.launchpad} ${d.deploymentId} factory`, txHash: d.txHash, blockNumber: d.blockNumber, data: { creator: lc(d.creator), symbol: d.symbol, deployment: d.deploymentId }, createdAt: d.timestamp! })))
+          .values(
+            feed.map((d) => ({
+              chainId: c,
+              tokenAddress: lc(d.token),
+              kind: "launch",
+              message: `Launched via ${d.launchpad === "vibe" ? "vibe/vibe" : d.launchpad} ${d.deploymentId} factory`,
+              txHash: d.txHash,
+              blockNumber: d.blockNumber,
+              data: { creator: lc(d.creator), symbol: d.symbol, deployment: d.deploymentId },
+              createdAt: d.timestamp!,
+            })),
+          )
           .onConflictDoNothing();
       const withUri = b.filter((d) => d.metadataURI);
       if (withUri.length)
         await tx
           .insert(tokenMetadata)
-          .values(withUri.map((d) => ({ chainId: c, tokenAddress: lc(d.token), uri: d.metadataURI!, onchainDigest: d.metadataDigest, priority: d.blockNumber >= activityStart ? 10 : 0 })))
+          .values(
+            withUri.map((d) => ({
+              chainId: c,
+              tokenAddress: lc(d.token),
+              uri: d.metadataURI!,
+              onchainDigest: d.metadataDigest,
+              priority: d.blockNumber >= activityStart ? 10 : 0,
+            })),
+          )
           .onConflictDoNothing();
       const historical = b.filter((d) => d.blockNumber < activityStart);
       if (historical.length && this.historicalBackfillEnabled())
         await tx
           .insert(backfillQueue)
-          .values(historical.map((d) => ({ chainId: c, tokenAddress: lc(d.token), status: "pending", reason: "bootstrap", priority: 0, launchBlock: d.blockNumber })))
+          .values(
+            historical.map((d) => ({ chainId: c, tokenAddress: lc(d.token), status: "pending", reason: "bootstrap", priority: 0, launchBlock: d.blockNumber })),
+          )
           .onConflictDoNothing();
     }
     if (decoded.length) await this.refreshCreators(tx, [...new Set(decoded.map((d) => lc(d.creator)))]);
@@ -615,7 +750,17 @@ export class VibeIndexer {
       if (!m) continue;
       await this.db
         .update(tokens)
-        .set({ name: m.name ?? r.name, symbol: m.symbol ?? r.symbol, decimals: m.decimals, totalSupply: m.totalSupply?.toString() ?? null, tokenMetaStatus: m.status, tokenMetaError: m.error, tokenMetaBlock: m.block, tokenMetaAttempts: sql`${tokens.tokenMetaAttempts} + 1`, updatedAt: new Date() })
+        .set({
+          name: m.name ?? r.name,
+          symbol: m.symbol ?? r.symbol,
+          decimals: m.decimals,
+          totalSupply: m.totalSupply?.toString() ?? null,
+          tokenMetaStatus: m.status,
+          tokenMetaError: m.error,
+          tokenMetaBlock: m.block,
+          tokenMetaAttempts: sql`${tokens.tokenMetaAttempts} + 1`,
+          updatedAt: new Date(),
+        })
         .where(and(eq(tokens.chainId, this.chainId), eq(tokens.address, r.address)));
     }
     return rows.length;
@@ -649,7 +794,13 @@ export class VibeIndexer {
   async loadCovered() {
     if (this.coveredLoaded) return;
     const rows = await this.db
-      .select({ token: launches.tokenAddress, curve: launches.curveAddress, creator: launches.creatorAddress, pair: launches.pairCurrency, createdBlock: launches.blockNumber })
+      .select({
+        token: launches.tokenAddress,
+        curve: launches.curveAddress,
+        creator: launches.creatorAddress,
+        pair: launches.pairCurrency,
+        createdBlock: launches.blockNumber,
+      })
       .from(launches)
       .innerJoin(tokens, and(eq(tokens.chainId, launches.chainId), eq(tokens.address, launches.tokenAddress)))
       .where(and(eq(launches.chainId, this.chainId), eq(tokens.activityCovered, true)));
@@ -680,14 +831,18 @@ export class VibeIndexer {
     let transferLogs: Log[];
     let curveLogs: Log[];
     try {
-      [transferLogs, curveLogs] = tokenAddrs.length === 0
-        ? [[], []]
-        : addressMode
-          ? await Promise.all([
-              getLogsAdaptive(this.provider, { address: tokenAddrs, event: TRANSFER_EVENT }, from, to, opt),
-              curveAddrs.length ? getLogsAdaptive(this.provider, { address: curveAddrs, events: curveEvents }, from, to, opt) : Promise.resolve([] as Log[]),
-            ])
-          : await Promise.all([getLogsAdaptive(this.provider, { event: TRANSFER_EVENT }, from, to, opt), getLogsAdaptive(this.provider, { events: curveEvents }, from, to, opt)]);
+      [transferLogs, curveLogs] =
+        tokenAddrs.length === 0
+          ? [[], []]
+          : addressMode
+            ? await Promise.all([
+                getLogsAdaptive(this.provider, { address: tokenAddrs, event: TRANSFER_EVENT }, from, to, opt),
+                curveAddrs.length ? getLogsAdaptive(this.provider, { address: curveAddrs, events: curveEvents }, from, to, opt) : Promise.resolve([] as Log[]),
+              ])
+            : await Promise.all([
+                getLogsAdaptive(this.provider, { event: TRANSFER_EVENT }, from, to, opt),
+                getLogsAdaptive(this.provider, { events: curveEvents }, from, to, opt),
+              ]);
     } catch (e) {
       if (e instanceof StoppedError) return { through: cursor, events: 0 };
       throw e;
@@ -701,17 +856,36 @@ export class VibeIndexer {
       await advanceCursor(tx, key, cursor, to);
     });
     this.stats.tailBlocks += to - from + 1n;
-    log(events ? "info" : "debug", "indexer.activity", { network: this.provider.slug, from, to, mode: tokenAddrs.length === 0 ? "none" : addressMode ? "address" : "topic", scannedTransfers: transferLogs.length, matchedTransfers: relevantTransfers.length, matchedCurve: relevantCurve.length, inserted: events });
+    log(events ? "info" : "debug", "indexer.activity", {
+      network: this.provider.slug,
+      from,
+      to,
+      mode: tokenAddrs.length === 0 ? "none" : addressMode ? "address" : "topic",
+      scannedTransfers: transferLogs.length,
+      matchedTransfers: relevantTransfers.length,
+      matchedCurve: relevantCurve.length,
+      inserted: events,
+    });
     if (Math.random() < 0.05) await pruneCheckpoints(this.db, this.chainId).catch(() => {});
     return { through: to, events };
   }
 
   // ── Historical backfill (batched, retried, dead-lettered) ───────────────
   async enqueueBackfill(token: string, opts: { reason?: string; priority?: number } = {}) {
-    const [l] = await this.db.select({ block: launches.blockNumber }).from(launches).where(and(eq(launches.chainId, this.chainId), eq(launches.tokenAddress, lc(token))));
+    const [l] = await this.db
+      .select({ block: launches.blockNumber })
+      .from(launches)
+      .where(and(eq(launches.chainId, this.chainId), eq(launches.tokenAddress, lc(token))));
     await this.db
       .insert(backfillQueue)
-      .values({ chainId: this.chainId, tokenAddress: lc(token), status: "pending", reason: opts.reason ?? "manual", priority: opts.priority ?? 100, launchBlock: l?.block ?? null })
+      .values({
+        chainId: this.chainId,
+        tokenAddress: lc(token),
+        status: "pending",
+        reason: opts.reason ?? "manual",
+        priority: opts.priority ?? 100,
+        launchBlock: l?.block ?? null,
+      })
       .onConflictDoUpdate({
         target: [backfillQueue.chainId, backfillQueue.tokenAddress],
         set: { priority: sql`greatest(${backfillQueue.priority}, excluded.priority)`, updatedAt: new Date() },
@@ -740,7 +914,10 @@ export class VibeIndexer {
 
   private async release(tokensLower: string[]) {
     if (!tokensLower.length) return;
-    await this.db.update(backfillQueue).set({ status: "pending", lockedBy: null, updatedAt: new Date() }).where(and(eq(backfillQueue.chainId, this.chainId), inArray(backfillQueue.tokenAddress, tokensLower)));
+    await this.db
+      .update(backfillQueue)
+      .set({ status: "pending", lockedBy: null, updatedAt: new Date() })
+      .where(and(eq(backfillQueue.chainId, this.chainId), inArray(backfillQueue.tokenAddress, tokensLower)));
   }
 
   private async failJob(token: string, attempts: number, e: unknown) {
@@ -751,9 +928,23 @@ export class VibeIndexer {
     const msg = errText(e);
     await this.db
       .update(backfillQueue)
-      .set({ status: dead ? "dead" : "failed", attempts: n, error: msg, lockedBy: null, nextAttemptAt: dead ? null : new Date(Date.now() + delayS * 1000), updatedAt: new Date() })
+      .set({
+        status: dead ? "dead" : "failed",
+        attempts: n,
+        error: msg,
+        lockedBy: null,
+        nextAttemptAt: dead ? null : new Date(Date.now() + delayS * 1000),
+        updatedAt: new Date(),
+      })
       .where(and(eq(backfillQueue.chainId, this.chainId), eq(backfillQueue.tokenAddress, token)));
-    log(dead ? "error" : "warn", "indexer.backfill.failed", { network: this.provider.slug, token, attempts: n, dead, retryInS: dead ? null : delayS, error: msg });
+    log(dead ? "error" : "warn", "indexer.backfill.failed", {
+      network: this.provider.slug,
+      token,
+      attempts: n,
+      dead,
+      retryInS: dead ? null : delayS,
+      error: msg,
+    });
   }
 
   async processBackfillQueue(): Promise<{ done: number; failed: number }> {
@@ -804,29 +995,47 @@ export class VibeIndexer {
    */
   async backfillGroup(tokensLower: string[], through: bigint) {
     const c = this.chainId;
-    const ls = await this.db.select().from(launches).where(and(eq(launches.chainId, c), inArray(launches.tokenAddress, tokensLower)));
+    const ls = await this.db
+      .select()
+      .from(launches)
+      .where(and(eq(launches.chainId, c), inArray(launches.tokenAddress, tokensLower)));
     const known = new Map(ls.map((l) => [l.tokenAddress, l]));
     const unknown = tokensLower.filter((t) => !known.has(t));
     if (unknown.length) {
       // Permanent: only indexed launches can be backfilled (bounds what a request can make us fetch).
-      await this.db.update(backfillQueue).set({ status: "dead", error: "Not a known launch on this chain", lockedBy: null, updatedAt: new Date() }).where(and(eq(backfillQueue.chainId, c), inArray(backfillQueue.tokenAddress, unknown)));
+      await this.db
+        .update(backfillQueue)
+        .set({ status: "dead", error: "Not a known launch on this chain", lockedBy: null, updatedAt: new Date() })
+        .where(and(eq(backfillQueue.chainId, c), inArray(backfillQueue.tokenAddress, unknown)));
       log("warn", "indexer.backfill.failed", { network: this.provider.slug, tokens: unknown, dead: true, error: "not a known launch" });
       if (!known.size) return;
     }
     const covered = new Set(
-      (await this.db.select({ a: tokens.address }).from(tokens).where(and(eq(tokens.chainId, c), inArray(tokens.address, [...known.keys()]), eq(tokens.activityCovered, true)))).map((r) => r.a),
+      (
+        await this.db
+          .select({ a: tokens.address })
+          .from(tokens)
+          .where(and(eq(tokens.chainId, c), inArray(tokens.address, [...known.keys()]), eq(tokens.activityCovered, true)))
+      ).map((r) => r.a),
     );
     const todo = [...known.values()].filter((l) => !covered.has(l.tokenAddress) && l.blockNumber <= through);
     const later = [...known.values()].filter((l) => l.blockNumber > through).map((l) => l.tokenAddress);
     const finish = async (tx: Tx, addrs: string[]) => {
       if (!addrs.length) return;
-      await tx.update(backfillQueue).set({ status: "completed", doneAt: new Date(), throughBlock: through, error: null, lockedBy: null, updatedAt: new Date() }).where(and(eq(backfillQueue.chainId, c), inArray(backfillQueue.tokenAddress, addrs)));
+      await tx
+        .update(backfillQueue)
+        .set({ status: "completed", doneAt: new Date(), throughBlock: through, error: null, lockedBy: null, updatedAt: new Date() })
+        .where(and(eq(backfillQueue.chainId, c), inArray(backfillQueue.tokenAddress, addrs)));
     };
     if (!todo.length) {
-      await this.db.transaction(async (tx) => {
+      await this.transaction(async (tx) => {
         await finish(tx, [...covered]);
         // Launched after the cursor: the tail will cover it; nothing to backfill yet.
-        if (later.length) await tx.update(backfillQueue).set({ status: "pending", nextAttemptAt: new Date(Date.now() + 60_000), lockedBy: null }).where(and(eq(backfillQueue.chainId, c), inArray(backfillQueue.tokenAddress, later)));
+        if (later.length)
+          await tx
+            .update(backfillQueue)
+            .set({ status: "pending", nextAttemptAt: new Date(Date.now() + 60_000), lockedBy: null })
+            .where(and(eq(backfillQueue.chainId, c), inArray(backfillQueue.tokenAddress, later)));
       });
       return;
     }
@@ -844,7 +1053,8 @@ export class VibeIndexer {
     // Nothing a token or its curve emitted can predate its launch block.
     const tf = transferLogs.filter((l) => l.blockNumber! >= (launchBlock.get(lc(l.address)) ?? 0n));
     const cl = curveLogs.filter((l) => l.blockNumber! >= (launchBlock.get(curveToken.get(lc(l.address)) ?? "") ?? 0n));
-    for (const l of todo) this.track({ token: l.tokenAddress, curve: l.curveAddress, creator: l.creatorAddress, pair: l.pairCurrency, createdBlock: l.blockNumber });
+    for (const l of todo)
+      this.track({ token: l.tokenAddress, curve: l.curveAddress, creator: l.creatorAddress, pair: l.pairCurrency, createdBlock: l.blockNumber });
     const addrs = todo.map((l) => l.tokenAddress);
     try {
       await this.applyLogs(
@@ -855,8 +1065,15 @@ export class VibeIndexer {
           const cur = await lockCursor(tx, this.keys.activity);
           if (cur !== through) throw new Error(`activity cursor moved (${through} → ${cur}); backfill will be retried`);
           const eth = todo.filter((l) => !l.pairCurrency || l.pairCurrency === ZERO_ADDRESS).map((l) => l.tokenAddress);
-          await tx.update(tokens).set({ activityCovered: true }).where(and(eq(tokens.chainId, c), inArray(tokens.address, addrs)));
-          if (eth.length) await tx.update(tokens).set({ volumeWei: sql`coalesce(${tokens.volumeWei}, 0)` }).where(and(eq(tokens.chainId, c), inArray(tokens.address, eth)));
+          await tx
+            .update(tokens)
+            .set({ activityCovered: true })
+            .where(and(eq(tokens.chainId, c), inArray(tokens.address, addrs)));
+          if (eth.length)
+            await tx
+              .update(tokens)
+              .set({ volumeWei: sql`coalesce(${tokens.volumeWei}, 0)` })
+              .where(and(eq(tokens.chainId, c), inArray(tokens.address, eth)));
           await this.recomputeLaunchStatus(tx, addrs);
           await finish(tx, [...addrs, ...covered]);
         },
@@ -870,7 +1087,14 @@ export class VibeIndexer {
       }
       throw e;
     }
-    log("info", "indexer.backfill.completed", { network: this.provider.slug, tokens: addrs.length, transfers: tf.length, curveEvents: cl.length, from: minBlock, through });
+    log("info", "indexer.backfill.completed", {
+      network: this.provider.slug,
+      tokens: addrs.length,
+      transfers: tf.length,
+      curveEvents: cl.length,
+      from: minBlock,
+      through,
+    });
   }
 
   // ── Shared write path ────────────────────────────────────────────────────
@@ -886,7 +1110,10 @@ export class VibeIndexer {
             return { chainId: this.chainId, tokenAddress: token, walletAddress: wallet, balance: v.toString(), firstSeenAt: now, lastUpdatedAt: now };
           }),
         )
-        .onConflictDoUpdate({ target: [holders.chainId, holders.tokenAddress, holders.walletAddress], set: { balance: sql`${holders.balance} + excluded.balance`, lastUpdatedAt: now } });
+        .onConflictDoUpdate({
+          target: [holders.chainId, holders.tokenAddress, holders.walletAddress],
+          set: { balance: sql`${holders.balance} + excluded.balance`, lastUpdatedAt: now },
+        });
     }
   }
 
@@ -898,7 +1125,10 @@ export class VibeIndexer {
         update launches l set
           status = case when g.tx_hash is not null then 'graduated' when cc.at is not null then 'curve_completed' else 'bonding' end,
           graduated_at = g.timestamp, graduated_tx = g.tx_hash, graduated_block = g.block_number, curve_completed_at = cc.at
-        from (select unnest(array[${sql.join(slice.map((a) => sql`${a}`), sql`, `)}]::varchar[]) as address) s
+        from (select unnest(array[${sql.join(
+          slice.map((a) => sql`${a}`),
+          sql`, `,
+        )}]::varchar[]) as address) s
         left join lateral (select tx_hash, block_number, timestamp from transaction_events e
                            where e.chain_id = ${this.chainId} and e.token_address = s.address and e.event_type = 'graduation'
                            order by block_number, log_index limit 1) g on true
@@ -909,7 +1139,13 @@ export class VibeIndexer {
     }
   }
 
-  private async applyLogs(transferLogs: Log[], curveLogs: Log[], head: bigint, finalize: (tx: Tx) => Promise<void>, alwaysRefresh: string[] = []): Promise<number> {
+  private async applyLogs(
+    transferLogs: Log[],
+    curveLogs: Log[],
+    head: bigint,
+    finalize: (tx: Tx) => Promise<void>,
+    alwaysRefresh: string[] = [],
+  ): Promise<number> {
     const transfers = transferLogs.map(decodeTransfer).filter((x): x is DecodedTransfer => !!x);
     const trades: DecodedTrade[] = [];
     const grads: DecodedGraduation[] = [];
@@ -932,14 +1168,30 @@ export class VibeIndexer {
     let inserted = 0;
     const c = this.chainId;
 
-    await this.db.transaction(async (tx) => {
+    await this.transaction(async (tx) => {
       // Transfers → events → holder deltas (only for rows inserted now).
       const fresh: DecodedTransfer[] = [];
       for (let i = 0; i < transfers.length; i += 1000) {
         const slice = transfers.slice(i, i + 1000);
         const rows = await tx
           .insert(transactionEvents)
-          .values(slice.map((t) => ({ chainId: c, txHash: t.txHash, logIndex: t.logIndex, blockNumber: t.blockNumber, blockHash: t.blockHash ?? null, timestamp: t.timestamp!, timestampExact: t.timestampExact ?? null, tokenAddress: lc(t.token), walletAddress: lc(t.to), counterparty: lc(t.from), eventType: "transfer", eventName: "Transfer", amount: t.value.toString() })))
+          .values(
+            slice.map((t) => ({
+              chainId: c,
+              txHash: t.txHash,
+              logIndex: t.logIndex,
+              blockNumber: t.blockNumber,
+              blockHash: t.blockHash ?? null,
+              timestamp: t.timestamp!,
+              timestampExact: t.timestampExact ?? null,
+              tokenAddress: lc(t.token),
+              walletAddress: lc(t.to),
+              counterparty: lc(t.from),
+              eventType: "transfer",
+              eventName: "Transfer",
+              amount: t.value.toString(),
+            })),
+          )
           .onConflictDoNothing()
           .returning({ txHash: transactionEvents.txHash, logIndex: transactionEvents.logIndex });
         const ok = new Set(rows.map((r) => `${r.txHash}:${r.logIndex}`));
@@ -958,7 +1210,24 @@ export class VibeIndexer {
         const slice = tradeRows.slice(i, i + 1000);
         const rows = await tx
           .insert(transactionEvents)
-          .values(slice.map(({ tr, ref }) => ({ chainId: c, txHash: tr.txHash, logIndex: tr.logIndex, blockNumber: tr.blockNumber, blockHash: tr.blockHash, timestamp: tr.timestamp!, timestampExact: tr.timestampExact ?? null, tokenAddress: ref.token, walletAddress: lc(tr.trader), counterparty: lc(tr.curve), eventType: tr.kind, eventName: tr.eventName, amount: tr.tokenAmount.toString(), quoteAmount: tr.quoteAmount.toString() })))
+          .values(
+            slice.map(({ tr, ref }) => ({
+              chainId: c,
+              txHash: tr.txHash,
+              logIndex: tr.logIndex,
+              blockNumber: tr.blockNumber,
+              blockHash: tr.blockHash,
+              timestamp: tr.timestamp!,
+              timestampExact: tr.timestampExact ?? null,
+              tokenAddress: ref.token,
+              walletAddress: lc(tr.trader),
+              counterparty: lc(tr.curve),
+              eventType: tr.kind,
+              eventName: tr.eventName,
+              amount: tr.tokenAmount.toString(),
+              quoteAmount: tr.quoteAmount.toString(),
+            })),
+          )
           .onConflictDoNothing()
           .returning({ txHash: transactionEvents.txHash, logIndex: transactionEvents.logIndex });
         const ok = new Set(rows.map((r) => `${r.txHash}:${r.logIndex}`));
@@ -969,7 +1238,18 @@ export class VibeIndexer {
         if (byCreator.length)
           await tx
             .insert(feedEvents)
-            .values(byCreator.map(({ tr, ref }) => ({ chainId: c, tokenAddress: ref.token, kind: "creator_activity", message: `Creator wallet ${tr.kind === "buy" ? "bought" : "sold"} on the bonding curve`, txHash: tr.txHash, blockNumber: tr.blockNumber, data: { side: tr.kind, amount: tr.tokenAmount.toString(), quote: tr.quoteAmount.toString() }, createdAt: tr.timestamp! })))
+            .values(
+              byCreator.map(({ tr, ref }) => ({
+                chainId: c,
+                tokenAddress: ref.token,
+                kind: "creator_activity",
+                message: `Creator wallet ${tr.kind === "buy" ? "bought" : "sold"} on the bonding curve`,
+                txHash: tr.txHash,
+                blockNumber: tr.blockNumber,
+                data: { side: tr.kind, amount: tr.tokenAmount.toString(), quote: tr.quoteAmount.toString() },
+                createdAt: tr.timestamp!,
+              })),
+            )
             .onConflictDoNothing();
       }
 
@@ -979,7 +1259,22 @@ export class VibeIndexer {
         if (!ref) continue;
         const rows = await tx
           .insert(transactionEvents)
-          .values({ chainId: c, txHash: g.txHash, logIndex: g.logIndex, blockNumber: g.blockNumber, blockHash: g.blockHash, timestamp: g.timestamp!, timestampExact: g.timestampExact ?? null, tokenAddress: ref.token, walletAddress: null, counterparty: lc(g.curve), eventType: g.kind === "graduated" ? "graduation" : "curve_completed", eventName: g.eventName, amount: g.tokenAmount?.toString() ?? null, quoteAmount: g.quoteAmount?.toString() ?? null })
+          .values({
+            chainId: c,
+            txHash: g.txHash,
+            logIndex: g.logIndex,
+            blockNumber: g.blockNumber,
+            blockHash: g.blockHash,
+            timestamp: g.timestamp!,
+            timestampExact: g.timestampExact ?? null,
+            tokenAddress: ref.token,
+            walletAddress: null,
+            counterparty: lc(g.curve),
+            eventType: g.kind === "graduated" ? "graduation" : "curve_completed",
+            eventName: g.eventName,
+            amount: g.tokenAmount?.toString() ?? null,
+            quoteAmount: g.quoteAmount?.toString() ?? null,
+          })
           .onConflictDoNothing()
           .returning({ id: transactionEvents.id });
         if (!rows.length) continue;
@@ -989,14 +1284,47 @@ export class VibeIndexer {
           await tx
             .update(launches)
             .set({ status: "graduated", graduatedAt: g.timestamp, graduatedTx: g.txHash, graduatedBlock: g.blockNumber })
-            .where(and(eq(launches.chainId, c), eq(launches.tokenAddress, ref.token), sql`(${launches.graduatedBlock} is null or ${launches.graduatedBlock} > ${g.blockNumber})`));
-          await tx.insert(feedEvents).values({ chainId: c, tokenAddress: ref.token, kind: "graduation", message: "Graduation event observed on the bonding curve", txHash: g.txHash, blockNumber: g.blockNumber, data: { event: g.eventName, poolId: g.poolId }, createdAt: g.timestamp! }).onConflictDoNothing();
+            .where(
+              and(
+                eq(launches.chainId, c),
+                eq(launches.tokenAddress, ref.token),
+                sql`(${launches.graduatedBlock} is null or ${launches.graduatedBlock} > ${g.blockNumber})`,
+              ),
+            );
+          await tx
+            .insert(feedEvents)
+            .values({
+              chainId: c,
+              tokenAddress: ref.token,
+              kind: "graduation",
+              message: "Graduation event observed on the bonding curve",
+              txHash: g.txHash,
+              blockNumber: g.blockNumber,
+              data: { event: g.eventName, poolId: g.poolId },
+              createdAt: g.timestamp!,
+            })
+            .onConflictDoNothing();
         } else {
           await tx
             .update(launches)
-            .set({ status: sql`case when ${launches.status} = 'graduated' then 'graduated' else 'curve_completed' end`, curveCompletedAt: sql`coalesce(${launches.curveCompletedAt}, ${g.timestamp!.toISOString()}::timestamptz)` })
+            .set({
+              status: sql`case when ${launches.status} = 'graduated' then 'graduated' else 'curve_completed' end`,
+              curveCompletedAt: sql`coalesce(${launches.curveCompletedAt}, ${g.timestamp!.toISOString()}::timestamptz)`,
+            })
             .where(and(eq(launches.chainId, c), eq(launches.tokenAddress, ref.token)));
-          await tx.insert(feedEvents).values({ chainId: c, tokenAddress: ref.token, kind: "curve_completed", message: "Bonding curve reached its target (CurveCompleted); graduation is a separate event", txHash: g.txHash, blockNumber: g.blockNumber, data: { event: g.eventName }, createdAt: g.timestamp! }).onConflictDoNothing();
+          await tx
+            .insert(feedEvents)
+            .values({
+              chainId: c,
+              tokenAddress: ref.token,
+              kind: "curve_completed",
+              message: "Bonding curve reached its target (CurveCompleted); graduation is a separate event",
+              txHash: g.txHash,
+              blockNumber: g.blockNumber,
+              data: { event: g.eventName },
+              createdAt: g.timestamp!,
+            })
+            .onConflictDoNothing();
         }
       }
 
@@ -1028,7 +1356,10 @@ export class VibeIndexer {
           volume_wei = case when t.volume_wei is null then null else coalesce(e.vol, 0) end,
           last_activity_at = e.last_at,
           updated_at = now()
-        from (select unnest(array[${sql.join(slice.map((a) => sql`${a}`), sql`, `)}]::varchar[]) as address) s
+        from (select unnest(array[${sql.join(
+          slice.map((a) => sql`${a}`),
+          sql`, `,
+        )}]::varchar[]) as address) s
         left join lateral (
           select count(*) as cnt from holders h
           where h.chain_id = ${c} and h.token_address = s.address and h.balance > 0
@@ -1054,7 +1385,10 @@ export class VibeIndexer {
     const every = this.opts.snapshotEveryMs ?? 10 * 60_000;
     for (let i = 0; i < tokenAddrs.length; i += 500) {
       const slice = tokenAddrs.slice(i, i + 500);
-      const rows = await this.db.select().from(tokens).where(and(eq(tokens.chainId, this.chainId), inArray(tokens.address, slice), eq(tokens.activityCovered, true)));
+      const rows = await this.db
+        .select()
+        .from(tokens)
+        .where(and(eq(tokens.chainId, this.chainId), inArray(tokens.address, slice), eq(tokens.activityCovered, true)));
       if (!rows.length) continue;
       const last = await this.db.execute<{ token_address: string; ts: Date }>(sql`
         select token_address, max(timestamp) as ts from activity_snapshots
@@ -1064,7 +1398,17 @@ export class VibeIndexer {
       const due = rows.filter((r) => now - (lastMap.get(r.address) ?? 0) >= every);
       if (!due.length) continue;
       await this.db.insert(activitySnapshots).values(
-        due.map((r) => ({ chainId: this.chainId, tokenAddress: r.address, timestamp: new Date(now), blockNumber: block, holders: r.holderCount, transactions: r.transferCount, buyers: r.uniqueBuyers, sellers: r.uniqueSellers, volume: r.volumeWei })),
+        due.map((r) => ({
+          chainId: this.chainId,
+          tokenAddress: r.address,
+          timestamp: new Date(now),
+          blockNumber: block,
+          holders: r.holderCount,
+          transactions: r.transferCount,
+          buyers: r.uniqueBuyers,
+          sellers: r.uniqueSellers,
+          volume: r.volumeWei,
+        })),
       );
     }
   }
@@ -1075,7 +1419,14 @@ export class VibeIndexer {
     const rows = await this.db
       .select({ address: tokens.address })
       .from(tokens)
-      .where(and(eq(tokens.chainId, this.chainId), eq(tokens.isVibeLaunch, true), sql`${tokens.analyzedAt} is null`, sql`${tokens.createdAt} > now() - interval '3 days'`))
+      .where(
+        and(
+          eq(tokens.chainId, this.chainId),
+          eq(tokens.isVibeLaunch, true),
+          sql`(${tokens.analyzedAt} is null or ${tokens.analyzedAt} < now() - interval '6 hours')`,
+          sql`${tokens.createdAt} > now() - interval '3 days'`,
+        ),
+      )
       .orderBy(sql`${tokens.createdBlock} desc nulls last`)
       .limit(limit);
     if (!rows.length) return 0;

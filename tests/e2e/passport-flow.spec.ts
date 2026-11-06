@@ -28,7 +28,10 @@ test.describe("core flow: search → passport → contract → creator → produ
     await expect(contract.getByRole("table")).toBeVisible();
 
     // Evidence panel ("Why am I seeing this?")
-    await page.getByRole("button", { name: /Provenance for Holders/ }).first().click();
+    await page
+      .getByRole("button", { name: /Provenance for Holders/ })
+      .first()
+      .click();
     const dialog = page.getByRole("dialog", { name: "Data provenance" });
     await expect(dialog).toBeVisible();
     await expect(dialog).toContainText("Source");
@@ -95,4 +98,18 @@ test.describe("core flow: search → passport → contract → creator → produ
     await page.keyboard.press("Escape");
     await expect(page.getByRole("dialog", { name: /Search tokens/ })).toBeHidden();
   });
+});
+
+test("demo operational and account boundaries remain explicit", async ({ page }) => {
+  expect((await page.request.get("/api/live")).status()).toBe(200);
+  const readiness = await page.request.get("/api/ready");
+  expect(readiness.status()).toBe(503);
+  expect((await readiness.json()).demo).toBe(true);
+  expect((await page.request.get("/api/ops")).status()).toBe(401);
+  expect((await page.request.get("/api/auth/nonce")).status()).toBe(403);
+  const spec = await page.request.get("/api/v1/openapi");
+  expect(spec.status()).toBe(200);
+  expect((await spec.json()).openapi).toBe("3.1.0");
+  await page.goto("/developers");
+  await expect(page.getByRole("heading", { name: "Developer account", exact: true })).toBeVisible();
 });

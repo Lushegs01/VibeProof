@@ -1,0 +1,6 @@
+npm warn deprecated @esbuild-kit/esm-loader@2.6.5: Merged into tsx: https://tsx.hirok.io
+npm warn deprecated @esbuild-kit/core-utils@3.3.2: Merged into tsx: https://tsx.hirok.io
+npm warn deprecated @paulmillr/qr@0.2.1: Switch to "qr" (new package name) for security updates: npm install qr
+npm warn deprecated tsconfck@3.1.6: unmaintained
+
+added 333 packages in 57s

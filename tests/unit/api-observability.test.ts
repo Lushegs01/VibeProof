@@ -1,0 +1,31 @@
+import { afterEach, expect, it, vi } from "vitest";
+vi.mock("@/lib/cache/ratelimit", () => ({ clientIp: () => "local", rateLimit: vi.fn() }));
+import { rateLimit } from "@/lib/cache/ratelimit";
+import { route } from "@/lib/api/response";
+import { metrics } from "@/lib/util/log";
+afterEach(() => {
+  vi.unstubAllEnvs();
+  vi.restoreAllMocks();
+});
+it("counts returned errors, rejected origins, limiter failures and unexpected errors exactly once", async () => {
+  vi.stubEnv("NEXT_PUBLIC_DEMO_MODE", "false");
+  vi.stubEnv("NEXT_PUBLIC_APP_URL", "https://app.example");
+  const allowed = { limit: 10, ok: true, remaining: 5, resetAt: Date.now() + 1000 };
+  vi.mocked(rateLimit).mockResolvedValue(allowed);
+  const handler = vi.fn(async () => new Response(null, { status: 503 }));
+  const wrapped = route("monitor_fixture", {}, handler);
+  const call = (method = "GET") => wrapped(new Request("https://app.example/api/check", { method }), {});
+  const before = metrics.counters.get("api.errors") ?? 0;
+  expect((await call()).status).toBe(503);
+  expect((await call("POST")).status).toBe(403);
+  vi.mocked(rateLimit).mockResolvedValue({ ...allowed, ok: false });
+  expect((await call()).status).toBe(429);
+  vi.mocked(rateLimit).mockResolvedValue({ ...allowed, ok: false, unavailable: true });
+  expect((await call()).status).toBe(503);
+  vi.mocked(rateLimit).mockRejectedValue(new Error("Unexpected limiter rejection"));
+  expect((await call()).status).toBe(500);
+  expect(handler).toHaveBeenCalledTimes(1);
+  expect(metrics.counters.get("api.monitor_fixture.calls")).toBe(5);
+  expect((metrics.counters.get("api.errors") ?? 0) - before).toBe(3);
+  expect(metrics.counters.get("api.monitor_fixture.client_errors")).toBe(2);
+});

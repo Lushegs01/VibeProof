@@ -1,0 +1,37 @@
+No files changed, compilation skipped
+
+Ran 20 tests for test/VibeProofRegistry.t.sol:VibeProofRegistryTest
+[PASS] testFuzz_submitThenGet(address,bytes32,string) (runs: 1024, μ: 198106, ~: 177760)
+[PASS] test_getProof_revertsWhenMissing() (gas: 30356)
+[PASS] test_rejectsEther() (gas: 17566)
+[PASS] test_rejectsEtherOnSubmit() (gas: 20042)
+[PASS] test_submitProof_acceptsMaxLengthURI() (gas: 597305)
+[PASS] test_submitProof_isKeyedBySender() (gas: 372976)
+[PASS] test_submitProof_revertsOnDuplicate() (gas: 221792)
+[PASS] test_submitProof_revertsOnEOAToken() (gas: 13699)
+[PASS] test_submitProof_revertsOnEmptyURI() (gas: 13428)
+[PASS] test_submitProof_revertsOnLongURI() (gas: 76118)
+[PASS] test_submitProof_revertsOnZeroHash() (gas: 13743)
+[PASS] test_submitProof_revertsOnZeroToken() (gas: 9069)
+[PASS] test_submitProof_storesRecordAndEmits() (gas: 231775)
+[PASS] test_submitters_pagination() (gas: 965005)
+[PASS] test_updateProof_allowsUriOnlyChange() (gas: 191995)
+[PASS] test_updateProof_cannotTouchOthersRecord() (gas: 230426)
+[PASS] test_updateProof_revertsWhenUnchanged() (gas: 223152)
+[PASS] test_updateProof_revertsWithoutExisting() (gas: 18641)
+[PASS] test_updateProof_updatesAndEmits() (gas: 196614)
+[PASS] test_updateProof_validatesInputs() (gas: 223234)
+Suite result: ok. 20 passed; 0 failed; 0 skipped; finished in 138.99ms (137.63ms CPU time)
+
+Ran 1 test for test/VibeProofRegistry.t.sol:VibeProofRegistryInvariantTest
+[PASS] invariant_oneSubmitterAndNoCustody() (runs: 256, calls: 128000, reverts: 0)
+
+╭--------------------------+----------+--------+---------+----------╮
+| Contract                 | Selector | Calls  | Reverts | Discards |
++===================================================================+
+| RegistryInvariantHandler | anchor   | 128000 | 0       | 0        |
+╰--------------------------+----------+--------+---------+----------╯
+
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 11.86s (11.85s CPU time)
+
+Ran 2 test suites in 11.86s (12.00s CPU time): 21 tests passed, 0 failed, 0 skipped (21 total tests)
