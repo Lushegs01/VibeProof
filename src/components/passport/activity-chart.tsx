@@ -8,7 +8,13 @@ export function ActivityChart({ series, height = 120 }: { series: SeriesPoint[];
   const total = series.reduce((a, p) => a + p.transfers + p.buys + p.sells, 0);
   return (
     <figure>
-      <svg viewBox={`0 0 100 ${height}`} preserveAspectRatio="none" className="h-[120px] w-full" role="img" aria-label={`Event activity: ${total} events across ${series.length} buckets`}>
+      <svg
+        viewBox={`0 0 100 ${height}`}
+        preserveAspectRatio="none"
+        className="h-[120px] w-full"
+        role="img"
+        aria-label={`Event activity: ${total} events across ${series.length} buckets`}
+      >
         {series.map((p, i) => {
           const tH = (p.transfers / max) * (height - 4);
           const bH = (p.buys / max) * (height - 4);
@@ -30,7 +36,8 @@ export function ActivityChart({ series, height = 120 }: { series: SeriesPoint[];
         <Legend color="var(--color-accent)" label="Curve buys" />
         <Legend color="var(--color-observed)" label="Curve sells" />
         <span className="ml-auto font-mono">
-          {new Date(series[0].t).toISOString().slice(5, 13).replace("T", " ")}h → {new Date(series[series.length - 1].t).toISOString().slice(5, 13).replace("T", " ")}h UTC
+          {new Date(series[0].t).toISOString().slice(5, 13).replace("T", " ")}h →{" "}
+          {new Date(series[series.length - 1].t).toISOString().slice(5, 13).replace("T", " ")}h UTC
         </span>
       </figcaption>
     </figure>

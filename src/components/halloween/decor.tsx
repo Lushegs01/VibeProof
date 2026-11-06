@@ -21,11 +21,26 @@ const BODY: [number, number, number][] = [
 ];
 const FACE: [number, number][] = [
   // eyes
-  [3, 4], [2, 5], [3, 5], [4, 5],
-  [8, 4], [7, 5], [8, 5], [9, 5],
+  [3, 4],
+  [2, 5],
+  [3, 5],
+  [4, 5],
+  [8, 4],
+  [7, 5],
+  [8, 5],
+  [9, 5],
   // grin with two teeth
-  [2, 7], [3, 8], [4, 8], [5, 8], [7, 8], [8, 8], [9, 7],
-  [4, 9], [5, 9], [6, 9], [7, 9],
+  [2, 7],
+  [3, 8],
+  [4, 8],
+  [5, 8],
+  [7, 8],
+  [8, 8],
+  [9, 7],
+  [4, 9],
+  [5, 9],
+  [6, 9],
+  [7, 9],
   [6, 8],
 ];
 
@@ -141,7 +156,12 @@ export function HeroDecor() {
 /* ── Event badge ─────────────────────────────────────────────────── */
 export function HauntBadge({ className }: { className?: string }) {
   return (
-    <span className={cn("inline-flex items-center gap-2 rounded-full border border-ghost/50 bg-ghost/[0.06] py-1.5 pl-2.5 pr-3.5 font-mono text-[11px] uppercase tracking-[0.14em] text-ghost", className)}>
+    <span
+      className={cn(
+        "inline-flex items-center gap-2 rounded-full border border-ghost/50 bg-ghost/[0.06] py-1.5 pl-2.5 pr-3.5 font-mono text-[11px] uppercase tracking-[0.14em] text-ghost",
+        className,
+      )}
+    >
       <PixelPumpkin className="lantern-glow size-4" />
       Haunt the Chain
       <span className="hidden text-ghost/70 sm:inline">· Halloween edition</span>

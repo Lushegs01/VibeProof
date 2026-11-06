@@ -11,7 +11,14 @@ export function LogoMark({ className = "size-6" }: { className?: string }) {
       </defs>
       <path d="M14 3.2V1.6c0-.6.4-1.1 1-1.2" stroke="#7BC043" strokeWidth="1.6" strokeLinecap="round" />
       <path d="M15.3 1.9c1.2-1 2.8-1.1 3.9-.3-1 1-2.6 1.2-3.9.3Z" fill="#7BC043" />
-      <path d="M14 3.5 24.5 9v10.5L14 25.5 3.5 19.5V9L14 3.5Z" fill="#FF8A1F" fillOpacity=".1" stroke="url(#vp-mark)" strokeWidth="1.8" strokeLinejoin="round" />
+      <path
+        d="M14 3.5 24.5 9v10.5L14 25.5 3.5 19.5V9L14 3.5Z"
+        fill="#FF8A1F"
+        fillOpacity=".1"
+        stroke="url(#vp-mark)"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
       <path d="m9 14.6 3.4 3.4L19.2 10.4" stroke="#F6E3CB" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
