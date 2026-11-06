@@ -124,7 +124,7 @@ export function CommandPalette() {
             role="dialog"
             aria-modal="true"
             aria-label="Search tokens, wallets and transactions"
-            className="w-full max-w-xl overflow-hidden rounded-[20px] border border-[#5cc6ea33] bg-surface shadow-[0_30px_80px_-20px_#0b65a366]"
+            className="w-full max-w-xl overflow-hidden rounded-[20px] border border-accent/20 bg-surface shadow-[0_30px_80px_-20px_#c24e0055]"
             initial={{ opacity: 0, y: -6, scale: 0.99 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -4 }}
@@ -189,7 +189,7 @@ export function SearchTrigger({ className, large = false, compact = false }: { c
       onClick={() => window.dispatchEvent(new Event("vp:open-search"))}
       className={cn(
         "group flex items-center gap-3 rounded-full border text-left text-fg-2 transition-colors hover:text-fg",
-        large ? "h-14 w-full border-[#5cc6ea40] bg-[#050e17cc] px-6 text-[15px] shadow-[0_0_40px_-12px_#2fb3e866] hover:border-[#5cc6ea80]" : "h-10 border-line-strong bg-surface/60 px-4 text-sm hover:border-[#2a6787]",
+        large ? "h-14 w-full border-accent/25 bg-[#0e0712cc] px-6 text-[15px] shadow-[0_0_40px_-12px_#ff7a1a55] hover:border-accent/50" : "h-10 border-line-strong bg-surface/60 px-4 text-sm hover:border-[#7a4466]",
         className,
       )}
       aria-label="Search token, wallet or transaction"

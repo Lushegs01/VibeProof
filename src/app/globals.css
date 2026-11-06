@@ -3,28 +3,31 @@
 @import "@fontsource-variable/plus-jakarta-sans";
 
 /*
- * VibeProof design tokens: "deep space / horizon glow".
- * Near-black navy canvas, ice-to-cyan gradients, glass navy cards, pill controls.
+ * VibeProof design tokens: "Haunt the Chain" (Halloween edition).
+ * Plum-black night canvas, pumpkin-orange glow, an acid-lime "ghost" highlight
+ * borrowed from the vibe/vibe event art, and a violet haze for depth.
  * State colours stay distinct and are never used decoratively.
  */
 @theme {
-  --color-bg: #000305;
-  --color-bg-2: #010812;
-  --color-surface: #061019;
-  --color-surface-2: #0a1824;
-  --color-surface-3: #0f2232;
-  --color-line: #10283a;
-  --color-line-strong: #1c4560;
-  --color-fg: #eef6f8;
-  --color-fg-2: #93b2b6;
-  --color-muted: #587a82;
-  --color-ice: #d3e3e6;
-  --color-accent: #5cc6ea;
-  --color-accent-deep: #0b65a3;
-  --color-accent-dim: #5cc6ea1f;
-  --color-observed: #b7d3dc;
+  --color-bg: #07040a;
+  --color-bg-2: #0c0611;
+  --color-surface: #120a17;
+  --color-surface-2: #1a0f20;
+  --color-surface-3: #23152b;
+  --color-line: #2a1830;
+  --color-line-strong: #4a2b47;
+  --color-fg: #f8efe4;
+  --color-fg-2: #c2aca4;
+  --color-muted: #8f7479;
+  --color-ice: #f6e3cb;
+  --color-accent: #ff8a1f;
+  --color-accent-deep: #c24e00;
+  --color-accent-dim: #ff8a1f1f;
+  --color-ghost: #d9ff3d;
+  --color-witch: #8b46d6;
+  --color-observed: #cfc4ec;
   --color-claimed: #e8d9a8;
-  --color-attention: #f0b8a0;
+  --color-attention: #f59cae;
 
   --font-display: "Unbounded Variable", ui-sans-serif, system-ui, sans-serif;
   --font-sans: "Plus Jakarta Sans Variable", ui-sans-serif, system-ui, sans-serif;
@@ -46,7 +49,7 @@
   }
   --animate-horizon: horizon 7s ease-in-out infinite;
   @keyframes horizon {
-    0%, 100% { opacity: .9; }
+    0%, 100% { opacity: .85; }
     50% { opacity: 1; }
   }
 }
@@ -71,7 +74,7 @@ h1, h2, h3, .font-display {
   letter-spacing: -0.02em;
 }
 
-::selection { background: #5cc6ea40; }
+::selection { background: #ff8a1f4d; }
 
 :focus-visible {
   outline: 1.5px solid var(--color-accent);
@@ -91,15 +94,15 @@ h1, h2, h3, .font-display {
 }
 
 @layer components {
-/* Ice → cyan headline gradient. */
+/* Candlelight → pumpkin → ember headline gradient. */
 .text-gradient {
-  background: linear-gradient(100deg, #d3e3e6 0%, #b5dbe6 35%, #6cc4e2 75%, #3aa3d0 100%);
+  background: linear-gradient(100deg, #f8e7d0 0%, #ffd29a 32%, #ff9a3c 70%, #f2621a 100%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
 }
 .text-gradient-soft {
-  background: linear-gradient(100deg, #93b2b6 0%, #d3e3e6 50%, #93cfe0 100%);
+  background: linear-gradient(100deg, #c2aca4 0%, #f6e3cb 50%, #ffbf80 100%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
@@ -120,47 +123,48 @@ h1, h2, h3, .font-display {
 }
 .btn:disabled { opacity: .4; cursor: not-allowed; }
 .btn-primary {
-  color: #00131c;
-  background: linear-gradient(180deg, #9be2f6 0%, #5cc6ea 55%, #3aa7d6 100%);
-  box-shadow: inset 0 1px 0 #ffffff80, 0 0 0 1px #5cc6ea55, 0 8px 28px -8px #2fb3e899;
+  color: #1c0800;
+  background: linear-gradient(180deg, #ffc27a 0%, #ff8a1f 55%, #e8670a 100%);
+  box-shadow: inset 0 1px 0 #ffffff80, 0 0 0 1px #ff8a1f66, 0 8px 28px -8px #ff7a1a99;
 }
-.btn-primary:hover:not(:disabled) { box-shadow: inset 0 1px 0 #ffffff99, 0 0 0 1px #8fdcf3, 0 10px 36px -6px #2fb3e8cc; transform: translateY(-1px); }
+.btn-primary:hover:not(:disabled) { box-shadow: inset 0 1px 0 #ffffff99, 0 0 0 1px #ffb46a, 0 10px 36px -6px #ff7a1acc; transform: translateY(-1px); }
 .btn-outline {
   color: var(--color-fg);
-  border: 1px solid #5cc6ea66;
-  background: #5cc6ea0d;
+  border: 1px solid #ff8a1f66;
+  background: #ff8a1f0d;
 }
-.btn-outline:hover:not(:disabled) { border-color: #5cc6eacc; background: #5cc6ea1f; }
+.btn-outline:hover:not(:disabled) { border-color: #ff8a1fcc; background: #ff8a1f1f; }
 .btn-ghost { color: var(--color-fg-2); }
 .btn-ghost:hover { color: var(--color-fg); }
 
-/* Glass navy cards with a thin cyan edge */
+/* Glass plum cards with a thin candlelit edge */
 .glass {
-  background: linear-gradient(180deg, #0c1f30cc 0%, #050e17e6 100%);
-  border: 1px solid #5cc6ea24;
+  background: linear-gradient(180deg, #1c0f22cc 0%, #0b060fe6 100%);
+  border: 1px solid #ff8a1f24;
   border-radius: var(--radius-lg);
   box-shadow: inset 0 1px 0 #ffffff0a;
 }
 .glass-strong {
-  background: linear-gradient(160deg, #0f2a40 0%, #071420 60%, #050d16 100%);
-  border: 1px solid #5cc6ea33;
+  background: linear-gradient(160deg, #2a1430 0%, #140a1a 60%, #0b0610 100%);
+  border: 1px solid #ff8a1f33;
   border-radius: var(--radius-lg);
 }
 
-/* Design-tool "selection box" around a highlighted word */
+/* Design-tool "selection box" around a highlighted word, in ghost lime */
 .select-box {
   position: relative;
   display: inline-block;
   padding: 0 .12em .06em;
-  border: 1.5px solid #4fb6dc;
-  background: #4fb6dc1a;
+  border: 1.5px solid var(--color-ghost);
+  background: #d9ff3d12;
   border-radius: 2px;
+  box-shadow: 0 0 28px -6px #d9ff3d55;
 }
 .select-box > i {
   position: absolute;
   width: 7px;
   height: 7px;
-  background: #4fb6dc;
+  background: var(--color-ghost);
   border-radius: 1px;
 }
 .select-box > i:nth-child(1) { left: -4px; top: -4px; }
@@ -168,14 +172,14 @@ h1, h2, h3, .font-display {
 .select-box > i:nth-child(3) { left: -4px; bottom: -4px; }
 .select-box > i:nth-child(4) { right: -4px; bottom: -4px; }
 
-/* Hero: faint vertical light lines */
+/* Hero: faint vertical light lines, violet like moonlit mist */
 .light-lines {
-  background-image: linear-gradient(to right, #5cc6ea14 1px, transparent 1px);
+  background-image: linear-gradient(to right, #8b46d614 1px, transparent 1px);
   background-size: 160px 100%;
   mask-image: linear-gradient(to bottom, transparent 0%, #000 25%, #000 70%, transparent 100%);
 }
 
-/* Hero: glowing planet horizon */
+/* Hero: a pumpkin-lit horizon with a violet haze above it */
 .horizon {
   position: absolute;
   left: 50%;
@@ -183,35 +187,84 @@ h1, h2, h3, .font-display {
   aspect-ratio: 1;
   transform: translateX(-50%);
   border-radius: 50%;
-  background: radial-gradient(closest-side, #000305 93%, #031726 97%, #0a4c74 99%, transparent 100%);
+  background: radial-gradient(closest-side, #07040a 93%, #1f0a05 97%, #7a2a05 99%, transparent 100%);
   box-shadow:
-    0 -1px 0 1px #7fdcff,
-    0 -8px 30px 6px #36b9f0cc,
-    0 -40px 120px 30px #0b65a3aa,
-    0 -120px 260px 60px #0b65a355,
-    inset 0 40px 80px -20px #2fa9e2aa;
+    0 -1px 0 1px #ffb46a,
+    0 -8px 30px 6px #ff7a1acc,
+    0 -40px 120px 30px #c24e00aa,
+    0 -120px 260px 60px #6b2aa055,
+    inset 0 40px 80px -20px #ff6a00aa;
   animation: var(--animate-horizon);
 }
 /* Small screens: fewer, smaller blurs (very large blurs render in visible tiles on mobile GPUs). */
 @media (max-width: 767px) {
   .horizon {
     box-shadow:
-      0 -1px 0 1px #7fdcff,
-      0 -6px 24px 4px #36b9f0cc,
-      0 -30px 80px 16px #0b65a399,
-      inset 0 30px 60px -20px #2fa9e2aa;
+      0 -1px 0 1px #ffb46a,
+      0 -6px 24px 4px #ff7a1acc,
+      0 -30px 80px 16px #c24e0099,
+      inset 0 30px 60px -20px #ff6a00aa;
   }
 }
 @media (min-width: 768px) { .horizon { width: 150%; } }
 
 .dot-grid {
-  background-image: radial-gradient(#5cc6ea33 1.2px, transparent 1.3px);
+  background-image: radial-gradient(#ff8a1f33 1.2px, transparent 1.3px);
   background-size: 14px 14px;
 }
+
+/* ── Halloween ambience ─────────────────────────────────────────────
+ * Decorative only (aria-hidden), no layout impact. Motion is a gentle
+ * bob in place, so the global reduced-motion rule leaves everything at
+ * its resting position. */
+
+/* Harvest moon with soft craters */
+.night-orb {
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 64% 30%, #d9b98a66 0 7%, transparent 8%),
+    radial-gradient(circle at 34% 62%, #d9b98a55 0 10%, transparent 11%),
+    radial-gradient(circle at 70% 70%, #d9b98a44 0 5%, transparent 6%),
+    radial-gradient(circle at 38% 34%, #fff8ea 0%, #f8e2bb 48%, #e2bf8a 100%);
+  box-shadow: 0 0 40px 6px #ffd9a03d, 0 0 140px 40px #ff8a1f1f;
+}
+
+/* Drifting fog bank (cheap layered gradients, no filter blur) */
+.fog {
+  background:
+    radial-gradient(ellipse 30% 55% at 15% 60%, #cfc4ec1c, transparent 70%),
+    radial-gradient(ellipse 28% 45% at 48% 45%, #cfc4ec14, transparent 70%),
+    radial-gradient(ellipse 32% 60% at 82% 62%, #cfc4ec1a, transparent 70%);
+  animation: fog-drift 26s ease-in-out infinite alternate;
+}
+@keyframes fog-drift {
+  from { transform: translateX(-3%); }
+  to { transform: translateX(3%); }
+}
+
+.bat { animation: bat-bob 7s ease-in-out infinite; }
+.bat > svg { animation: bat-flap .9s ease-in-out infinite; transform-origin: 50% 40%; }
+@keyframes bat-bob {
+  0%, 100% { transform: translate(0, 0) rotate(-4deg); }
+  50% { transform: translate(10px, -12px) rotate(4deg); }
+}
+@keyframes bat-flap {
+  0%, 100% { transform: scaleY(1); }
+  50% { transform: scaleY(.55); }
+}
+
+.spider { animation: spider-dangle 9s ease-in-out infinite; transform-origin: 50% 0; }
+@keyframes spider-dangle {
+  0%, 100% { transform: rotate(-3deg); }
+  50% { transform: rotate(3deg); }
+}
+
+/* Jack-o'-lantern glow behind the event badge */
+.lantern-glow { filter: drop-shadow(0 0 6px #d9ff3d66); }
 }
 
 .skeleton {
-  background: linear-gradient(90deg, #08141f 0%, #102335 50%, #08141f 100%);
+  background: linear-gradient(90deg, #140a19 0%, #26152d 50%, #140a19 100%);
   background-size: 200% 100%;
   animation: var(--animate-shimmer);
   border-radius: 6px;
@@ -219,15 +272,15 @@ h1, h2, h3, .font-display {
 
 .grid-bg {
   background-image:
-    linear-gradient(to right, #5cc6ea0a 1px, transparent 1px),
-    linear-gradient(to bottom, #5cc6ea0a 1px, transparent 1px);
+    linear-gradient(to right, #ff8a1f0a 1px, transparent 1px),
+    linear-gradient(to bottom, #ff8a1f0a 1px, transparent 1px);
   background-size: 48px 48px;
 }
 
 /* Gradient hairline separators (FAQ, sections) */
 .hairline {
   height: 1px;
-  background: linear-gradient(90deg, transparent, #5cc6ea44 30%, #5cc6ea66 50%, #5cc6ea44 70%, transparent);
+  background: linear-gradient(90deg, transparent, #ff8a1f44 30%, #ff8a1f66 50%, #ff8a1f44 70%, transparent);
 }
 
 @keyframes fadeIn {
@@ -241,7 +294,7 @@ h1, h2, h3, .font-display {
     height: 2.875rem;
     border-radius: 9999px;
     border: 1px solid var(--color-line-strong);
-    background: #050e17;
+    background: #0e0712;
     padding: 0 1.1rem;
     font-size: .9375rem;
     color: var(--color-fg);
@@ -249,8 +302,8 @@ h1, h2, h3, .font-display {
   }
   textarea.input { height: auto; padding: .75rem 1.1rem; border-radius: 16px; }
   .input::placeholder { color: var(--color-muted); }
-  .input:hover { border-color: #2a6787; }
-  .input:focus { outline: none; border-color: var(--color-accent); box-shadow: 0 0 0 3px #5cc6ea26; }
+  .input:hover { border-color: #7a4466; }
+  .input:focus { outline: none; border-color: var(--color-accent); box-shadow: 0 0 0 3px #ff8a1f26; }
 }
 
 @media (prefers-reduced-motion: reduce) {
