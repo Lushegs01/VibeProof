@@ -1,0 +1,63 @@
+
+> vibeproof@0.1.0 test:wallet
+> playwright test -c playwright.wallet.config.ts
+
+[WebServer] (node:3968) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:3981) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:3993) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:4024) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:4040) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+{"ts":"2026-11-06T07:14:24.846Z","level":"info","event":"indexer.activity_start","network":"robinhood-testnet","start":"1"}
+{"ts":"2026-11-06T07:14:24.904Z","level":"info","event":"indexer.launches","network":"robinhood-testnet","deployment":"v6-run15","count":1,"from":"1","to":"16"}
+{"ts":"2026-11-06T07:14:24.911Z","level":"info","event":"indexer.covered_loaded","network":"robinhood-testnet","tokens":1}
+{"ts":"2026-11-06T07:14:24.959Z","level":"info","event":"indexer.activity","network":"robinhood-testnet","from":"1","to":"16","mode":"address","scannedTransfers":1,"matchedTransfers":1,"matchedCurve":0,"inserted":1}
+[WebServer] (node:4059) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:4067) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:4075) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 6 tests using 1 worker
+
+(node:4087) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:4225) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:4233) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:4241) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:4252) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:4260) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 [wallet-desktop] › tests/wallet/creator-journey.spec.ts:6:1 › creator connects, signs SIWE, submits evidence, anchors and independently verifies the public passport (11.9s)
+  ✓  2 [wallet-desktop] › tests/wallet/creator-journey.spec.ts:58:1 › signature rejection is recoverable and wrong creators cannot submit (3.4s)
+  ✓  3 [wallet-desktop] › tests/wallet/creator-journey.spec.ts:75:1 › retrying a temporary anchor verification failure reuses the original transaction (7.8s)
+[WebServer] (node:4351) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+(node:4360) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:4522) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:4530) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:4538) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:4546) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:4554) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  4 [wallet-mobile] › tests/wallet/creator-journey.spec.ts:6:1 › creator connects, signs SIWE, submits evidence, anchors and independently verifies the public passport (11.3s)
+  ✓  5 [wallet-mobile] › tests/wallet/creator-journey.spec.ts:58:1 › signature rejection is recoverable and wrong creators cannot submit (3.3s)
+[WebServer] (node:4667) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  6 [wallet-mobile] › tests/wallet/creator-journey.spec.ts:75:1 › retrying a temporary anchor verification failure reuses the original transaction (8.5s)
+
+  6 passed (1.3m)

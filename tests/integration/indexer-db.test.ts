@@ -25,28 +25,55 @@ const ZERO = "0x0000000000000000000000000000000000000000";
 let reachable = true;
 let mods: Awaited<ReturnType<typeof load>>;
 async function load() {
-  const [{ getDb, getSql, schema }, { VibeIndexer }, { VIBE_EVENTS, TRANSFER_EVENT }, { VIBE_DEPLOYMENTS }, drizzle, migrator, proof, creator, token] = await Promise.all([
-    import("@/lib/db/client"),
-    import("@/indexer/indexer"),
-    import("@/lib/vibe/abis"),
-    import("@/lib/vibe/contracts"),
-    import("drizzle-orm"),
-    import("drizzle-orm/postgres-js/migrator"),
-    import("@/lib/services/proof-service"),
-    import("@/lib/services/creator-service"),
-    import("@/lib/services/token-service"),
-  ]);
+  const [{ getDb, getSql, schema }, { VibeIndexer }, { VIBE_EVENTS, TRANSFER_EVENT }, { VIBE_DEPLOYMENTS }, drizzle, migrator, proof, creator, token] =
+    await Promise.all([
+      import("@/lib/db/client"),
+      import("@/indexer/indexer"),
+      import("@/lib/vibe/abis"),
+      import("@/lib/vibe/contracts"),
+      import("drizzle-orm"),
+      import("drizzle-orm/postgres-js/migrator"),
+      import("@/lib/services/proof-service"),
+      import("@/lib/services/creator-service"),
+      import("@/lib/services/token-service"),
+    ]);
   return { getDb, getSql, schema, VibeIndexer, VIBE_EVENTS, TRANSFER_EVENT, VIBE_DEPLOYMENTS, drizzle, migrator, proof, creator, token };
 }
 
 const p = new FakeProvider();
 
 function launch(token: Address, curve: Address, block: bigint, launchId: bigint) {
-  p.push(FACTORY, mods.VIBE_EVENTS.LaunchCreated, { launchId, launcher: CREATOR, token }, { curve, name: `Token ${launchId}`, symbol: `T${launchId}`, metadataURI: "ipfs://x", pairCurrency: ZERO, taxBps: 100, packedWeights: 0n, projectTreasury: CREATOR, targetPairUnits: 0n, netPersonal: 0n, giftNetTotal: 0n, giftRoot: `0x${"0".repeat(64)}`, giftCount: 0n }, block);
+  p.push(
+    FACTORY,
+    mods.VIBE_EVENTS.LaunchCreated,
+    { launchId, launcher: CREATOR, token },
+    {
+      curve,
+      name: `Token ${launchId}`,
+      symbol: `T${launchId}`,
+      metadataURI: "ipfs://x",
+      pairCurrency: ZERO,
+      taxBps: 100,
+      packedWeights: 0n,
+      projectTreasury: CREATOR,
+      targetPairUnits: 0n,
+      netPersonal: 0n,
+      giftNetTotal: 0n,
+      giftRoot: `0x${"0".repeat(64)}`,
+      giftCount: 0n,
+    },
+    block,
+  );
 }
 const transfer = (token: Address, from: string, to: string, value: bigint, block: bigint) => p.push(token, mods.TRANSFER_EVENT, { from, to }, { value }, block);
 const buy = (curve: Address, buyer: Address, tokens: bigint, cost: bigint, block: bigint) =>
-  p.push(curve, mods.VIBE_EVENTS.CurveBuy, { buyer, recipient: buyer }, { grossTokens: tokens, netTokens: tokens, tokenFee: 0n, pairCost: cost, pairFee: 0n, rateBps: 0n }, block);
+  p.push(
+    curve,
+    mods.VIBE_EVENTS.CurveBuy,
+    { buyer, recipient: buyer },
+    { grossTokens: tokens, netTokens: tokens, tokenFee: 0n, pairCost: cost, pairFee: 0n, rateBps: 0n },
+    block,
+  );
 
 beforeAll(async () => {
   mods = await load();
@@ -83,7 +110,12 @@ describe.runIf(process.env.SKIP_DB_TESTS !== "1")("indexer → Postgres", () => 
   it("indexes launches, tail activity, holders and counters", async () => {
     if (!reachable) return;
     const db = mods.getDb()!;
-    const idx = new mods.VibeIndexer(p as never, db, { initialBackfillBlocks: 500n, snapshotEveryMs: 0, confirmations: 0n, historicalBackfill: false, metadata: false, analyzePerTick: 0 }, [{ ...mods.VIBE_DEPLOYMENTS[0], factory: FACTORY, startBlock: 1n }]);
+    const idx = new mods.VibeIndexer(
+      p as never,
+      db,
+      { initialBackfillBlocks: 500n, snapshotEveryMs: 0, confirmations: 0n, historicalBackfill: false, metadata: false, analyzePerTick: 0 },
+      [{ ...mods.VIBE_DEPLOYMENTS[0], factory: FACTORY, startBlock: 1n }],
+    );
     const r = await idx.tick();
     expect(r.newLaunches).toBe(2);
     expect(r.activityThrough).toBe(1000n);
@@ -118,7 +150,9 @@ describe.runIf(process.env.SKIP_DB_TESTS !== "1")("indexer → Postgres", () => 
     const { tokens, indexerState } = mods.schema;
     const { eq } = mods.drizzle;
     await db.update(indexerState).set({ lastBlock: 500n }).where(eq(indexerState.key, "activity:46630"));
-    const idx = new mods.VibeIndexer(p as never, db, { snapshotEveryMs: 0, confirmations: 0n, historicalBackfill: false, metadata: false, analyzePerTick: 0 }, [{ ...mods.VIBE_DEPLOYMENTS[0], factory: FACTORY, startBlock: 1n }]);
+    const idx = new mods.VibeIndexer(p as never, db, { snapshotEveryMs: 0, confirmations: 0n, historicalBackfill: false, metadata: false, analyzePerTick: 0 }, [
+      { ...mods.VIBE_DEPLOYMENTS[0], factory: FACTORY, startBlock: 1n },
+    ]);
     await idx.tick();
     const [tNew] = await db.select().from(tokens).where(eq(tokens.address, TOKEN_NEW.toLowerCase()));
     expect(tNew.transferCount).toBe(5);
@@ -130,7 +164,9 @@ describe.runIf(process.env.SKIP_DB_TESTS !== "1")("indexer → Postgres", () => 
     const db = mods.getDb()!;
     const { tokens, holders } = mods.schema;
     const { eq, and } = mods.drizzle;
-    const idx = new mods.VibeIndexer(p as never, db, { snapshotEveryMs: 0, confirmations: 0n, historicalBackfill: false, metadata: false, analyzePerTick: 0 }, [{ ...mods.VIBE_DEPLOYMENTS[0], factory: FACTORY, startBlock: 1n }]);
+    const idx = new mods.VibeIndexer(p as never, db, { snapshotEveryMs: 0, confirmations: 0n, historicalBackfill: false, metadata: false, analyzePerTick: 0 }, [
+      { ...mods.VIBE_DEPLOYMENTS[0], factory: FACTORY, startBlock: 1n },
+    ]);
     await idx.enqueueBackfill(TOKEN_OLD);
     await idx.tick();
     const [tOld] = await db.select().from(tokens).where(eq(tokens.address, TOKEN_OLD.toLowerCase()));
@@ -138,7 +174,10 @@ describe.runIf(process.env.SKIP_DB_TESTS !== "1")("indexer → Postgres", () => 
     expect(tOld.transferCount).toBe(3);
     expect(tOld.buyCount).toBe(1);
     expect(tOld.holderCount).toBe(2); // W1: 6, W2: 4
-    const [w2] = await db.select().from(holders).where(and(eq(holders.tokenAddress, TOKEN_OLD.toLowerCase()), eq(holders.walletAddress, W2.toLowerCase())));
+    const [w2] = await db
+      .select()
+      .from(holders)
+      .where(and(eq(holders.tokenAddress, TOKEN_OLD.toLowerCase()), eq(holders.walletAddress, W2.toLowerCase())));
     expect(w2.balance).toBe("4");
   });
 
@@ -170,14 +209,32 @@ describe.runIf(process.env.SKIP_DB_TESTS !== "1")("indexer → Postgres", () => 
   it("stores proof checks and exposes the latest per type", async () => {
     if (!reachable) return;
     const db = mods.getDb()!;
-    await db.insert(mods.schema.projectProofs).values({ chainId: 46630, tokenAddress: TOKEN_NEW.toLowerCase(), websiteUrl: "https://a.xyz", githubUrl: "https://github.com/o/r", submittedBy: CREATOR.toLowerCase(), submitterIsCreator: true, metadataHash: `0x${"1".repeat(64)}` });
-    const ev = (t: string, state: string, at: string) => ({ type: t, url: "https://a.xyz", state, summary: "", facts: {}, evidence: { source: "test", method: "test", observedAt: at } });
-    await mods.proof.storeChecks(TOKEN_NEW.toLowerCase(), [ev("website", "unavailable", "2026-09-29T00:00:00Z"), ev("github", "observed", "2026-09-29T00:00:00Z")] as never);
+    await db.insert(mods.schema.projectProofs).values({
+      chainId: 46630,
+      tokenAddress: TOKEN_NEW.toLowerCase(),
+      websiteUrl: "https://a.xyz",
+      githubUrl: "https://github.com/o/r",
+      submittedBy: CREATOR.toLowerCase(),
+      submitterIsCreator: true,
+      metadataHash: `0x${"1".repeat(64)}`,
+    });
+    const ev = (t: string, state: string, at: string) => ({
+      type: t,
+      url: "https://a.xyz",
+      state,
+      summary: "",
+      facts: {},
+      evidence: { source: "test", method: "test", observedAt: at },
+    });
+    await mods.proof.storeChecks(TOKEN_NEW.toLowerCase(), [
+      ev("website", "unavailable", "2026-09-29T00:00:00Z"),
+      ev("github", "observed", "2026-09-29T00:00:00Z"),
+    ] as never);
     await mods.proof.storeChecks(TOKEN_NEW.toLowerCase(), [ev("website", "verified", "2026-09-30T00:00:00Z")] as never);
     const section = await mods.token.getProofSection(TOKEN_NEW);
     expect(section.submitted).toBe(true);
-    expect(section.checks.find((c) => c.type === "website")?.state).toBe("verified");
-    expect(section.score).toEqual({ observed: 2, total: 3 });
+    expect(section.checks.find((c) => c.type === "website")?.assurance).toBe("expired");
+    expect(section.score).toEqual({ observed: 0, total: 3 });
   });
 
   it("builds a zero-filled hourly activity series for a covered token", async () => {

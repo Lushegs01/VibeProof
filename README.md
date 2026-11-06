@@ -20,7 +20,7 @@ VibeProof never says a token is "safe", "legit" or "a scam", and it has **no sin
 ```
 contracts/VibeProofRegistry.sol       Onchain proof-anchoring primitive (no owner, no custody)
 script/DeployVibeProofRegistry.s.sol  Foundry deploy script
-test/VibeProofRegistry.t.sol          Foundry tests (20 tests incl. fuzz)
+test/VibeProofRegistry.t.sol          Foundry tests (unit, fuzz and invariant coverage)
 drizzle/                              SQL migrations (generated from src/lib/db/schema.ts)
 src/
   proxy.ts                            Next 16 request proxy: 404s malformed addresses before render
@@ -36,7 +36,7 @@ src/
   lib/changes/                        "What changed?" diff engine
   lib/services/                       Passport, creator, search, discover, proof, share services
   lib/auth/                           SIWE verification + HMAC session cookies
-  lib/cache/                          Redis cache (SWR, request de-dup) + rate limiting, in-memory fallback
+  lib/cache/                          Redis cache (SWR, request de-dup) + shared production rate limiting
   lib/demo/                           Deterministic DEMO DATA fixtures (demo mode only)
 tests/unit, tests/integration, tests/e2e
 ```
@@ -64,7 +64,7 @@ Robinhood Chain Testnet (RPC)                Blockscout API        GitHub API / 
           Next.js route handlers (/api/*)  +  server-rendered pages
 ```
 
-Page renders never fan out into RPC calls. A cold passport does one contract analysis: a bounded multicall, three `eth_getStorageAt` reads and two explorer requests, all persisted. Everything else comes from Postgres, and responses are cached in Redis with stale-while-revalidate. On the live testnet, a cold passport API call took 0.84s and a cached one 0.02s.
+Page renders never fan out into RPC calls. A cold passport does one contract analysis: a bounded multicall, three `eth_getStorageAt` reads and two explorer requests, all persisted. Everything else comes from Postgres, and responses are cached in Redis with stale-while-revalidate. Historical measurements in this repository reported 0.84s cold and 0.02s cached. These were not re-measured as production performance during the current implementation.
 
 ### Coverage model (why counts are sometimes "Unavailable")
 
@@ -147,7 +147,7 @@ npm run indexer                   # long-running; separate terminal
 npm run dev                       # http://localhost:3000
 ```
 
-Without Redis, cache and rate limits fall back to in-process memory (single instance only). Without Postgres the app still serves live contract analysis, but launches, creators, activity and proofs will show as unavailable.
+Development can use in-process cache/rate limits. Production request limiting requires shared Redis and fails closed when unavailable. Without Postgres the app still serves live contract analysis, but launches, creators, activity and proofs will show as unavailable.
 
 **Demo mode.** `NEXT_PUBLIC_DEMO_MODE=true` serves a deterministic fixture set with `0xde00…` addresses, banner-labelled **DEMO DATA** on every page and `demo: true` in every API response. It never mixes with testnet data, and it is a build-time flag.
 
@@ -159,9 +159,9 @@ Without Redis, cache and rate limits fall back to in-process memory (single inst
 | `ROBINHOOD_TESTNET_WSS_URL` | no | Reserved for WebSocket tailing |
 | `BLOCKSCOUT_API_URL` | yes | Blockscout base (`…/api`) |
 | `DATABASE_URL` | yes* | Postgres (`POSTGRES_URL` from Vercel's Neon integration is accepted as a fallback; `-pooler` URLs auto-disable prepared statements) |
-| `REDIS_URL` | no | Shared cache and rate limiting (`KV_URL` from Vercel's Upstash integration is accepted as a fallback) |
+| `REDIS_URL` | prod | Shared cache and rate limiting (`KV_URL` from Vercel's Upstash integration is accepted as a fallback) |
 | `CRON_SECRET` | serverless | Bearer secret for `GET /api/cron/indexer` (≥ 16 chars) |
-| `INDEXER_JOB_BUDGET_S` | no | Seconds a scheduled indexer run may take (default 300; the job stops 30 s earlier) |
+| `INDEXER_JOB_BUDGET_S` | no | Seconds a scheduled indexer run may take (120–300, default 300; reserves 90 s for maintenance) |
 | `GITHUB_TOKEN` | no | Read-only token; raises GitHub limits from 60/h to 5000/h |
 | `SESSION_SECRET` | prod | ≥ 32 chars; HMAC key for session cookies |
 | `NEXT_PUBLIC_APP_URL` | yes | Absolute URL for OG images, badge links |
@@ -191,24 +191,37 @@ Two ways to run it:
 
 Both hold the same Postgres advisory lock, so they can never write concurrently. A second run simply returns `{"status":"skipped"}`. During a first sync the activity tail waits until every factory's launch cursor has caught up, so no token is marked covered with missing early history.
 
-State lives in the `indexer_state` table: per-factory launch cursors, `activity_start` and the `activity` cursor. Each range commits atomically with its cursor, so a crash resumes cleanly. Holder deltas are applied only for newly inserted events, so re-processing a range can never double-count (covered by an integration test). Run exactly **one** indexer process per database. Proof checks older than 6 h are re-run every 10 minutes.
+State lives in the `indexer_state` table: per-factory launch cursors, `activity_start` and the `activity` cursor. Each range commits atomically with its cursor, so a crash resumes cleanly. Holder deltas are applied only for newly inserted events, so re-processing a range can never double-count (covered by an integration test). Per-chain advisory locks prevent concurrent scheduler runs from overlapping. Proof checks older than 6 h are re-run every 10 minutes.
 
 ## Contract deployment (VibeProofRegistry)
 
-**Deployed on Robinhood Chain Testnet:** [`0x47b639e587FdBf9A8323d030C9930744BfbF2F2E`](https://explorer.testnet.chain.robinhood.com/address/0x47b639e587FdBf9A8323d030C9930744BfbF2F2E?tab=contract). It was deployed in block 126,651,474 (tx `0x2eabd62b…`), and its source is verified on Blockscout (solc 0.8.28). A live smoke test (`submitProof` → `hasProof` → server-side receipt verification) passed, and a mismatched hash was rejected. Details are in [`deployments/robinhood-testnet.json`](deployments/robinhood-testnet.json). The contract has no owner, so the deployer address holds no privileges.
+**Deployed on Robinhood Chain Testnet:** [`0x47b639e587FdBf9A8323d030C9930744BfbF2F2E`](https://explorer.testnet.chain.robinhood.com/address/0x47b639e587FdBf9A8323d030C9930744BfbF2F2E?tab=contract). It was deployed in block 126,651,474 (tx `0x2eabd62b…`), and its source is verified on Blockscout (solc 0.8.28). The historical deployment record reports a live smoke test (`submitProof` → `hasProof` → server-side receipt verification), and a mismatched hash was rejected. Details are in [`deployments/robinhood-testnet.json`](deployments/robinhood-testnet.json). The contract has no owner, so the deployer address holds no privileges.
 
 The registry is a **proof-anchoring primitive**: it stores `creator`, `token`, `metadataHash`, `metadataURI` and timestamps, and nothing subjective. It has no owner, admin, pause, upgrade path, payable function or token custody. Records are keyed by `(msg.sender, token)`; VibeProof only credits records whose `creator` equals the indexed launcher.
 
 ```bash
 forge install                         # forge-std is a git submodule: git submodule update --init
-npm run forge:test                    # 20 tests, incl. 1,024-run fuzz
+npm run forge:test                    # unit, 1,024-run fuzz and stateful invariants
 cast wallet import vibeproof-deployer --interactive   # encrypted keystore; never put keys in env/source
 ROBINHOOD_TESTNET_RPC_URL=https://rpc.testnet.chain.robinhood.com npm run deploy:testnet
 REGISTRY_ADDRESS=0x… npm run verify:testnet            # Blockscout verification
 # then set NEXT_PUBLIC_REGISTRY_ADDRESS=0x… and rebuild
 ```
 
-The anchoring flow: the creator submits proof (SIWE-authenticated), then optionally calls `submitProof(token, metadataHash, uri)` from their wallet. The server independently fetches the receipt and records the anchor **only if** it contains a matching `ProofSubmitted`/`ProofUpdated` event from the configured registry.
+The anchoring flow: the creator submits proof (SIWE-authenticated), then optionally calls `submitProof(token, metadataHash, uri)` from their wallet. The wallet anchors a content-addressed canonical v1 document. The server checks the receipt, URI, hash, creator/token/network binding, canonical block and confirmation depth. `/api/proofs/verify` reproduces the commitment from chain data and exact document bytes without trusting proof database claims. Supply `launchTx` to establish creator authority independently. Existing registry deployments are preserved.
+
+## Operational and evidence integrity foundations
+
+* Operational alerts use persisted growth baselines and an ordered delivery outbox; a separate monitor job detects dependency and alert-transport failures. See [monitoring configuration](docs/engineering/MONITORING.md).
+* `/api/live` reports HTTP availability; `/api/ready` requires fresh indexer data and dependencies.
+* Indexer outcomes are `success`, `partial_success`, `skipped` or `failed`; partial/failure responses fail scheduling. Execution receipts persist in `indexer_runs`.
+* `/operations` shows protected network health, queues, recent runs and evidence freshness. Structured alerts support sustained conditions, deduplication and recovery.
+* Canonical v1 evidence bytes are retained by content hash, with an explicitly configured IPFS raw-block backend available. The submit form discloses public storage and the configured IPFS provider before submission. Mutable legacy commitments remain identifiable.
+* Website and README address mentions are **observations**. Wallet-bound website/GitHub challenges establish control with explicit expiration, not legitimacy.
+* `/developers` provides credentials, usage, webhook setup and explicitly test-only checkout. Paid capacity never changes factual evidence outcomes.
+* Local browser watchlists are preserved; explicitly sync to authenticated wallet/network storage from `/watchlist`.
+
+See [baseline](docs/engineering/BASELINE.md), [deployment and recovery](docs/engineering/DEPLOYMENT.md), [threat model](docs/engineering/SECURITY.md), [pilot and metrics](docs/engineering/PILOT.md), and [implementation/testing report](docs/engineering/IMPLEMENTATION.md).
 
 ## API
 
@@ -232,7 +245,15 @@ Every response has the shape `{ data, meta: { source, observedAt, cached, block?
 | POST | `/api/proofs` | Submit proof (session required; creator only) |
 | POST | `/api/proofs/anchor` | `{ token, txHash }`; verifies the registry receipt |
 | GET | `/api/v1/tokens/[address]` | Stable developer API subset, CORS `*` |
-| GET | `/api/health` | DB / Redis / RPC / indexer status, lag, metrics |
+| GET | `/api/health` | Public dependency/status summary; bearer authorization exposes operational detail |
+| GET | `/api/live`, `/api/ready`, `/api/ops` | Liveness, strict readiness, protected operational report |
+| GET | `/api/evidence/[hash]`, `/api/proofs/verify` | Exact immutable bytes and independent chain verification |
+| POST | `/api/proofs/control` | Issue or verify creator-bound control challenges |
+| GET/POST | `/api/watchlist` | Authenticated network-aware wallet watchlist |
+| GET | `/api/notifications` | Paginated significant changes for watched assets |
+| GET | `/api/v1/discover`, `/api/v1/openapi` | Cursor-paginated launches and API specification |
+| GET/POST/DELETE | `/api/developer/keys`, `/api/developer/webhooks` | Developer credentials and verified webhook endpoints |
+| GET/POST | `/api/account` | Usage/entitlements and test checkout (no charges) |
 
 The embeddable badge is `<iframe src="https://<host>/embed/badge/0x…" width="320" height="120"></iframe>`.
 
@@ -248,10 +269,12 @@ The embeddable badge is `<iframe src="https://<host>/embed/badge/0x…" width="3
 ## Testing
 
 ```bash
-npm test                    # unit + integration (Vitest): 141 tests
+npm run test:local          # unit + database + Anvil integration, without live RPC dependencies
+npm run test:live           # opt-in live Robinhood RPC reads
 npm run test:unit           # pure logic: address/URL validation, selector scan, decoding, diff, hashing, checks…
 npm run test:integration    # Postgres (DATABASE_URL_TEST, default vibeproof_test), live RPC, SIWE, anvil registry
-npm run forge:test          # Solidity (20 tests)
+npm run forge:test          # Solidity unit, fuzz and invariant tests
+npm run test:wallet         # real local wallet/SIWE/registry browser journey; see engineering/TESTING.md
 npm run test:e2e:build && npm run test:e2e   # Playwright, desktop + mobile, against a demo-mode build
 ```
 
@@ -261,10 +284,10 @@ npm run test:e2e:build && npm run test:e2e   # Playwright, desktop + mobile, aga
 
 ### Vercel (web + database + scheduled indexer)
 
-The repository is ready for Vercel. The `vercel-build` script runs migrations and then `next build`. Migrations are idempotent and skipped when no database is configured, so builds never fail for lack of one.
+Deployment is subject to the quality gates and residual risks in [the implementation report](docs/engineering/IMPLEMENTATION.md). The `vercel-build` script runs migrations and then `next build`. Migrations are idempotent and skipped when no database is configured, so builds never fail for lack of one.
 
 1. **Database.** In the Vercel project, go to *Storage* → *Create Database* → **Neon (Postgres)** and connect it to the project for all environments. This injects `POSTGRES_URL` and `DATABASE_URL`, and the app accepts either. Tables are created on the next deploy.
-2. **Cache (recommended).** Go to *Storage* → **Upstash (Redis)**, which injects `KV_URL` (accepted), or set `REDIS_URL`. Without it, cache and rate limits are per-instance only.
+2. **Cache (recommended).** Go to *Storage* → **Upstash (Redis)**, which injects `KV_URL` (accepted), or set `REDIS_URL`. It is required for production shared rate limiting.
 3. **Environment variables** (*Settings* → *Environment Variables*):
    * `CRON_SECRET`: output of `openssl rand -hex 32`
    * `SESSION_SECRET`: output of `openssl rand -hex 32`
@@ -274,7 +297,7 @@ The repository is ready for Vercel. The `vercel-build` script runs migrations an
    * `INDEXER_JOB_BUDGET_S`: `300` on Hobby/Pro with Fluid compute; lower it if your function limit is lower
 4. **Redeploy.** Migrations run during the build.
 5. **Schedule the indexer.** Pick one option:
-   * **GitHub Actions (any plan).** `.github/workflows/indexer-cron.yml` calls the endpoint every 5 minutes. Add the repository secrets `VIBEPROOF_URL` (production URL) and `CRON_SECRET` (the same value as in Vercel). You can trigger it once by hand from the *Actions* tab. It does nothing until both secrets exist.
+   * **GitHub Actions (any plan).** `.github/workflows/indexer-cron.yml` calls the endpoint every 5 minutes. Add repository secrets `VIBEPROOF_URL` (HTTPS origin) and `CRON_SECRET` (matching hosting configuration), plus repository variable `VIBEPROOF_ALLOWED_HOSTS` (exact authorized hostnames). You can trigger it once by hand from the *Actions* tab. Missing secrets, an untrusted destination, invalid responses and failed/partial executions fail the workflow.
    * **Vercel Cron (Pro).** Add `{"crons":[{"path":"/api/cron/indexer","schedule":"*/5 * * * *"}]}` to a `vercel.json`. Vercel sends the `CRON_SECRET` bearer automatically. Hobby plans only allow daily crons, which is why this isn't committed.
 6. **Watch the first sync** at `/api/health` (`indexedThrough`, `lagBlocks`). A fresh database first indexes about 143k historical launches, at roughly 1M blocks per 45 s of run time. The activity tail then starts at head minus 100k blocks. Expect the first full sync to take a few scheduled runs.
 
@@ -286,7 +309,9 @@ Each preview deployment connected to the same database shares its data. Only pro
 * **Indexer:** either a single long-running worker (`npm run indexer`) against the same database, or the scheduled endpoint above.
 * **RPC:** use a provider endpoint in production. The public RPC rate-limits.
 
-## Current status (honest)
+## Historical live observations and current limitations
+
+The following live-chain observations are historical repository evidence, not new live verification of this patch. Current executed results and release blockers are in [the implementation report](docs/engineering/IMPLEMENTATION.md).
 
 * **Tested and working against the live Robinhood Chain Testnet:**
   * Launch indexing from both factories (about 143k launches).
@@ -294,6 +319,6 @@ Each preview deployment connected to the same database shares its data. Only pro
   * Holder balances match Blockscout address-for-address on the tokens spot-checked. Counts differ only by the documented exclusions (the curve and protocol contracts).
   * Contract analysis, passport pages, creator pages, discover, feed and change detection.
   * Website checks against real sites.
-* **Registry:** deployed to Robinhood Chain Testnet at `0x47b639e587FdBf9A8323d030C9930744BfbF2F2E`. Source is verified on Blockscout, and the anchor round-trip (submit onchain → server verifies the receipt; mismatched hash rejected) passed against the live chain. The wallet UI step that calls it has not been clicked through with a browser wallet.
-* **Not tested live:** GitHub checks (unit-tested against mocked API responses; the API was not reachable from the build sandbox) and the wallet-driven SIWE UI flow (signature verification itself is integration-tested with real signatures).
-* **Roadmap (Phase 2+):** wallet-linked watchlists, notifications, WebSocket tailing, project comparison, ecosystem graph (observed funding relationships only), Discord/Telegram bots, webhooks, and an optional AI summary layer constrained to cite evidence.
+* **Registry:** deployed to Robinhood Chain Testnet at `0x47b639e587FdBf9A8323d030C9930744BfbF2F2E`. Source is verified on Blockscout, and the anchor round-trip (submit onchain → server verifies the receipt; mismatched hash rejected) passed against the live chain. The current patch also passes a separate local desktop/mobile browser wallet journey against Anvil; this is not new public-chain evidence.
+* **Not tested live:** GitHub checks (unit-tested against mocked API responses; the API was not reachable from the build sandbox) and extension/mobile WalletConnect relay compatibility. The local SIWE browser flow uses real signatures against Anvil.
+* **Implemented foundations:** wallet/network watchlists, significant-change notifications, signed webhooks, developer credentials, usage quotas and a test billing adapter. Advanced analytics, organizational billing, WebSocket tailing, comparison, bots and graph intelligence remain future work.

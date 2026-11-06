@@ -1,0 +1,10 @@
+{
+  "checkedAt": "2026-11-05T11:56:33.067380+00:00",
+  "network": "robinhood-testnet",
+  "chainId": 46630,
+  "headBlock": 148959021,
+  "registry": "0x47b639e587FdBf9A8323d030C9930744BfbF2F2E",
+  "runtimeBytes": 3870,
+  "runtimeSha256": "0ae4e56d66e845485495e188fd6685db0c0fd96c4fefea4234f5898b2b0e51c3",
+  "scope": "Read-only RPC observations; no transaction sent, indexer invocation, IPFS upload or proof lifecycle demonstration"
+}

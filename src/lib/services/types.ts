@@ -111,6 +111,16 @@ export type ProofSection = {
   description: string | null;
   metadataHash: string | null;
   registryTx: string | null;
+  metadataUri?: string | null;
+  controls?: {
+    kind: string;
+    target: string;
+    status: string;
+    firstObservedAt: string;
+    lastCheckedAt: string | null;
+    lastVerifiedAt: string | null;
+    expiresAt: string;
+  }[];
   checks: UrlCheckResult[];
   /** e.g. { observed: 2, total: 3 } over website/github/demo */
   score: { observed: number; total: number };

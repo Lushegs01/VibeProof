@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { getAddress, type Address } from "viem";
 import { FakeProvider } from "./fake-provider";
 
@@ -32,6 +32,7 @@ beforeAll(async () => {
   await db.execute(m.drizzle.sql`drop schema if exists public cascade; drop schema if exists drizzle cascade; create schema public;`);
   await m.migrator.migrate(db, { migrationsFolder: "./drizzle" });
 });
+afterEach(() => vi.restoreAllMocks());
 afterAll(async () => {
   await m?.getSql()?.end();
 });
@@ -51,7 +52,27 @@ describe.runIf(process.env.SKIP_DB_TESTS !== "1")("serverless indexer job", () =
       { ...m.VIBE_DEPLOYMENTS[0], id: "b", factory: F2 as Address, startBlock: 1n },
     ];
     // Launch on the lagging factory at block 900, with a transfer at 950.
-    p.push(F2, m.VIBE_EVENTS.LaunchCreated, { launchId: 1n, launcher: CREATOR, token: TOKEN }, { curve: CURVE, name: "B", symbol: "B", metadataURI: "", pairCurrency: "0x0000000000000000000000000000000000000000", taxBps: 0, packedWeights: 0n, projectTreasury: CREATOR, targetPairUnits: 0n, netPersonal: 0n, giftNetTotal: 0n, giftRoot: `0x${"0".repeat(64)}`, giftCount: 0n }, 900n);
+    p.push(
+      F2,
+      m.VIBE_EVENTS.LaunchCreated,
+      { launchId: 1n, launcher: CREATOR, token: TOKEN },
+      {
+        curve: CURVE,
+        name: "B",
+        symbol: "B",
+        metadataURI: "",
+        pairCurrency: "0x0000000000000000000000000000000000000000",
+        taxBps: 0,
+        packedWeights: 0n,
+        projectTreasury: CREATOR,
+        targetPairUnits: 0n,
+        netPersonal: 0n,
+        giftNetTotal: 0n,
+        giftRoot: `0x${"0".repeat(64)}`,
+        giftCount: 0n,
+      },
+      900n,
+    );
     p.push(TOKEN, m.TRANSFER_EVENT, { from: "0x0000000000000000000000000000000000000000", to: CREATOR }, { value: 5n }, 950n);
     const { indexerState } = m.schema;
     await db.insert(indexerState).values([
@@ -62,7 +83,12 @@ describe.runIf(process.env.SKIP_DB_TESTS !== "1")("serverless indexer job", () =
     ]);
     // First shouldStop() check happens in deployment b's launch loop → b stays at 500 this tick.
     let calls = 0;
-    const idx = new m.VibeIndexer(p as never, db, { shouldStop: () => ++calls === 1, snapshotEveryMs: 0, confirmations: 0n, metadata: false, analyzePerTick: 0 }, deps);
+    const idx = new m.VibeIndexer(
+      p as never,
+      db,
+      { shouldStop: () => ++calls === 1, snapshotEveryMs: 0, confirmations: 0n, metadata: false, analyzePerTick: 0 },
+      deps,
+    );
     const r = await idx.tick();
     expect(r.activityThrough).toBe(500n);
 
@@ -79,5 +105,79 @@ describe.runIf(process.env.SKIP_DB_TESTS !== "1")("serverless indexer job", () =
   it("runIndexerJob returns a bounded result and skips when locked", async () => {
     const skipped = await m.withIndexerLock(() => m.runIndexerJob({ budgetMs: 1_000 }));
     expect(skipped).toEqual({ status: "skipped", reason: "another indexer run holds the lock" });
+  });
+  it("fails when all configured network jobs fail and keeps aggregate head unknown", async () => {
+    const provider = await import("@/lib/chain/provider");
+    vi.spyOn(provider, "getProvider").mockReturnValue(new FakeProvider() as never);
+    vi.spyOn(m.VibeIndexer.prototype, "tick").mockRejectedValue(new Error("RPC timeout"));
+    const result = await m.runIndexerJob({ budgetMs: 1000, networks: ["robinhood-testnet"] });
+    expect(result.status).toBe("failed");
+    if (result.status !== "skipped") {
+      expect(result.head).toBeNull();
+      expect(result.networks[0].status).toBe("error");
+    }
+  });
+  it("retains completed work when a later tick fails", async () => {
+    const provider = await import("@/lib/chain/provider");
+    vi.spyOn(provider, "getProvider").mockReturnValue(new FakeProvider() as never);
+    vi.spyOn(m.VibeIndexer.prototype, "tick")
+      .mockResolvedValueOnce({
+        head: 100n,
+        safeHead: 100n,
+        activityThrough: 50n,
+        launchesThrough: 100n,
+        newLaunches: 1,
+        newEvents: 2,
+        backfilled: 0,
+        backfillFailed: 0,
+        metadataFetched: 0,
+        reorg: { detected: false, ancestor: null },
+      })
+      .mockRejectedValueOnce(new Error("later RPC failure"));
+    const result = await m.runIndexerJob({ budgetMs: 1000, networks: ["robinhood-testnet"] });
+    expect(result.status).toBe("partial_success");
+    if (result.status !== "skipped") {
+      expect(result.newLaunches).toBe(1);
+      expect(result.newEvents).toBe(2);
+      expect(result.activityThrough).toBe("50");
+    }
+  });
+  it("counts a failed metadata document once and reports partial execution", async () => {
+    const provider = await import("@/lib/chain/provider");
+    vi.spyOn(provider, "getProvider").mockReturnValue(new FakeProvider() as never);
+    vi.spyOn(m.VibeIndexer.prototype, "tick")
+      .mockResolvedValueOnce({
+        head: 100n,
+        safeHead: 100n,
+        activityThrough: 100n,
+        launchesThrough: 100n,
+        newLaunches: 0,
+        newEvents: 0,
+        backfilled: 0,
+        backfillFailed: 0,
+        metadataFetched: 2,
+        metadataFailed: 1,
+        failures: ["1 metadata job(s) failed"],
+        reorg: { detected: false, ancestor: null },
+      })
+      .mockResolvedValue({
+        head: 100n,
+        safeHead: 100n,
+        activityThrough: 100n,
+        launchesThrough: 100n,
+        newLaunches: 0,
+        newEvents: 0,
+        backfilled: 0,
+        backfillFailed: 0,
+        metadataFetched: 0,
+        reorg: { detected: false, ancestor: null },
+      });
+    const result = await m.runIndexerJob({ budgetMs: 1000, networks: ["robinhood-testnet"] });
+    expect(result.status).toBe("partial_success");
+    if (result.status !== "skipped") {
+      expect(result.failedJobs).toBe(1);
+      expect(result.metadataProcessed).toBe(2);
+      expect(result.metadataFailed).toBe(1);
+    }
   });
 });

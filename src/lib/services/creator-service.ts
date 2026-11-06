@@ -6,6 +6,7 @@ import { isDemoMode } from "../demo/mode";
 import { DEMO_TOKENS } from "../demo/data";
 import type { Evidence } from "../verification/types";
 import type { NetworkSlug } from "../chain/networks";
+import { creatorTimeline } from "./history-service";
 import { serviceNetwork } from "./network";
 
 const { creators, launches, tokens } = schema;
@@ -37,6 +38,7 @@ export type CreatorPassport = {
   activeLaunchCount: number;
   historicalLaunchCount: number;
   launches: CreatorLaunch[];
+  timeline?: Awaited<ReturnType<typeof creatorTimeline>>;
   evidence: Evidence;
   definitions: Record<string, string>;
   demo: boolean;
@@ -46,7 +48,8 @@ export const CREATOR_DEFINITIONS = {
   launches: "Tokens whose vibe/vibe launch event names this wallet as launcher/creator.",
   graduated: "Launches for which a Graduated event was observed on their own bonding curve.",
   active: "Launches not yet graduated with any observed Transfer/trade in the last 7 days.",
-  historical: "Launches not yet graduated, with complete indexed history and no observed activity in the last 7 days. Launches whose history is still being indexed are in neither group.",
+  historical:
+    "Launches not yet graduated, with complete indexed history and no observed activity in the last 7 days. Launches whose history is still being indexed are in neither group.",
 };
 
 async function build(address: Address, chainId: number, slug: string, chainName: string): Promise<CreatorPassport | null> {
@@ -71,6 +74,7 @@ async function build(address: Address, chainId: number, slug: string, chainName:
     graduatedLaunchCount: c.graduatedLaunchCount,
     activeLaunchCount: c.activeLaunchCount,
     historicalLaunchCount: c.historicalLaunchCount,
+    timeline: await creatorTimeline(address, chainId),
     launches: rows.map(({ l, t }) => ({
       chain: slug,
       token: getAddress(l.tokenAddress),
@@ -86,7 +90,11 @@ async function build(address: Address, chainId: number, slug: string, chainName:
       deploymentId: l.deploymentId,
       txHash: l.txHash,
     })),
-    evidence: { source: `VibeProof indexer (${chainName} logs)`, method: "Launchpad factory launch events filtered by launcher", observedAt: new Date().toISOString() },
+    evidence: {
+      source: `VibeProof indexer (${chainName} logs)`,
+      method: "Launchpad factory launch events filtered by launcher",
+      observedAt: new Date().toISOString(),
+    },
     definitions: CREATOR_DEFINITIONS,
     demo: false,
   };
@@ -105,7 +113,21 @@ function demoCreator(address: string): CreatorPassport | null {
     graduatedLaunchCount: list.filter((t) => t.graduated).length,
     activeLaunchCount: list.filter((t) => !t.graduated).length,
     historicalLaunchCount: 0,
-    launches: list.map((t) => ({ chain: "robinhood-testnet", historyComplete: true, token: t.addr, name: t.name, symbol: t.symbol, createdAt: at(t.hours), status: t.graduated ? "graduated" : "bonding", graduatedAt: t.graduated ? at(t.hours + 20) : null, holders: t.holders, transactions: t.txs, lastActivityAt: at(71), deploymentId: "v6-run15", txHash: `0x${"de".repeat(32)}` })),
+    launches: list.map((t) => ({
+      chain: "robinhood-testnet",
+      historyComplete: true,
+      token: t.addr,
+      name: t.name,
+      symbol: t.symbol,
+      createdAt: at(t.hours),
+      status: t.graduated ? "graduated" : "bonding",
+      graduatedAt: t.graduated ? at(t.hours + 20) : null,
+      holders: t.holders,
+      transactions: t.txs,
+      lastActivityAt: at(71),
+      deploymentId: "v6-run15",
+      txHash: `0x${"de".repeat(32)}`,
+    })),
     evidence: { source: "DEMO DATA", method: "Deterministic fixture", observedAt: at(72) },
     definitions: CREATOR_DEFINITIONS,
     demo: true,
@@ -115,6 +137,8 @@ function demoCreator(address: string): CreatorPassport | null {
 export async function getCreatorPassport(address: Address, network?: NetworkSlug | string | null) {
   if (isDemoMode()) return { creator: demoCreator(address), cached: false };
   const net = serviceNetwork(network);
-  const { value, cached: hit } = await cached(`creator:v2:${net.chainId}:${address.toLowerCase()}`, { ttl: 30, swr: 300 }, () => build(address, net.chainId, net.slug, net.name));
+  const { value, cached: hit } = await cached(`creator:v2:${net.chainId}:${address.toLowerCase()}`, { ttl: 30, swr: 300 }, () =>
+    build(address, net.chainId, net.slug, net.name),
+  );
   return { creator: value, cached: hit };
 }

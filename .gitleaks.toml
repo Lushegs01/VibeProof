@@ -1,0 +1,10 @@
+[extend]
+useDefault = true
+[allowlist]
+description = "Public EVM addresses, exact published event topics, and the well-known Anvil test account"
+regexTarget = "secret"
+regexes = [
+  '''^0x[0-9a-fA-F]{40}$''',
+  '''^0x(a7e8032bfd07a9fbcde50eabe91eb2901faee6dbddd9cced579491d9b07ef5c8|56eef5c350583250e71791d6d659f4d181796c9deb08b977252efc3995aa9279|34041bc557672fe6a73853ece671e7715108f75e25427bfddf3e2f8e2085a0e7)$''',
+  '''^0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80$'''
+]

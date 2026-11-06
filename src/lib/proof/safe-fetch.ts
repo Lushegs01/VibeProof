@@ -47,9 +47,25 @@ const guardedLookup: LookupFunction = (hostname, options, callback) => {
  */
 export async function safeFetch(
   input: string,
-  opts: { timeoutMs?: number; maxBytes?: number; maxRedirects?: number; method?: "GET" | "HEAD"; allowHttp?: boolean; accept?: string } = {},
+  opts: {
+    timeoutMs?: number;
+    maxBytes?: number;
+    maxRedirects?: number;
+    method?: "GET" | "HEAD" | "POST";
+    body?: Buffer;
+    headers?: Record<string, string>;
+    allowHttp?: boolean;
+    accept?: string;
+  } = {},
 ): Promise<SafeFetchResult> {
-  const { timeoutMs = 8_000, maxBytes = 512 * 1024, maxRedirects = 3, method = "GET", allowHttp = true, accept = "text/html,application/xhtml+xml,*/*;q=0.5" } = opts;
+  const {
+    timeoutMs = 8_000,
+    maxBytes = 512 * 1024,
+    maxRedirects = 3,
+    method = "GET",
+    allowHttp = true,
+    accept = "text/html,application/xhtml+xml,*/*;q=0.5",
+  } = opts;
   const redirects: string[] = [];
   const started = Date.now();
   let current = input;
@@ -58,7 +74,7 @@ export async function safeFetch(
     if (!v.ok) throw new SafeFetchError(v.reason, "blocked");
     const remaining = timeoutMs - (Date.now() - started);
     if (remaining <= 0) throw new SafeFetchError("Timed out", "timeout");
-    const { location, ...res } = await requestOnce(v.url, method, Math.max(250, remaining), maxBytes, accept);
+    const { location, ...res } = await requestOnce(v.url, method, Math.max(250, remaining), maxBytes, accept, opts.body, opts.headers);
     if (res.status >= 300 && res.status < 400 && location) {
       const next = new URL(location, v.url).toString();
       redirects.push(next);
@@ -70,7 +86,7 @@ export async function safeFetch(
   throw new SafeFetchError("Too many redirects", "too_many_redirects");
 }
 
-function requestOnce(url: URL, method: string, timeoutMs: number, maxBytes: number, accept: string) {
+function requestOnce(url: URL, method: string, timeoutMs: number, maxBytes: number, accept: string, body?: Buffer, headers?: Record<string, string>) {
   return new Promise<Omit<SafeFetchResult, "finalUrl" | "redirects" | "ms"> & { location?: string }>((resolve, reject) => {
     // Hard deadline for the whole exchange (socket `timeout` alone only measures idle time, so a
     // slow-drip server could otherwise hold the request open indefinitely).
@@ -89,7 +105,13 @@ function requestOnce(url: URL, method: string, timeoutMs: number, maxBytes: numb
         timeout: timeoutMs,
         // No accept-encoding: responses arrive uncompressed, so there is nothing to decompress
         // (no decompression bombs) and the byte cap applies to what is actually stored.
-        headers: { "user-agent": "VibeProofBot/0.1 (+https://vibeproof.xyz/bot)", accept, "accept-encoding": "identity" },
+        headers: {
+          ...headers,
+          ...(body ? { "content-length": String(body.length) } : {}),
+          "user-agent": "VibeProofBot/0.1 (+https://vibeproof.xyz/bot)",
+          accept,
+          "accept-encoding": "identity",
+        },
       },
       (res) => {
         let tls: SafeFetchResult["tls"] = null;
@@ -130,8 +152,19 @@ function requestOnce(url: URL, method: string, timeoutMs: number, maxBytes: numb
             location: typeof res.headers.location === "string" ? res.headers.location : undefined,
           });
         };
+        res.on("error", () => {
+          if (!truncated) {
+            clearTimeout(deadline);
+            reject(new SafeFetchError("Response stream failed", "network"));
+          }
+        });
         res.on("end", done);
-        res.on("close", done);
+        res.on("close", () => {
+          if (!res.complete && !truncated) {
+            clearTimeout(deadline);
+            reject(new SafeFetchError("Response ended before completion", "network"));
+          } else done();
+        });
       },
     );
     req.on("timeout", () => {
@@ -145,7 +178,7 @@ function requestOnce(url: URL, method: string, timeoutMs: number, maxBytes: numb
       if (/certificate|SSL|TLS/i.test(e.message)) return reject(new SafeFetchError(`TLS error: ${e.message}`, "tls"));
       reject(new SafeFetchError(e.message, "network"));
     });
-    req.end();
+    req.end(body);
   });
 }
 
@@ -154,8 +187,7 @@ export function extractPageMeta(html: string) {
   return {
     title: pick(/<title[^>]*>([^<]*)<\/title>/i),
     description:
-      pick(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']*)["']/i) ??
-      pick(/<meta[^>]+content=["']([^"']*)["'][^>]+name=["']description["']/i),
+      pick(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']*)["']/i) ?? pick(/<meta[^>]+content=["']([^"']*)["'][^>]+name=["']description["']/i),
     ogTitle: pick(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']*)["']/i),
   };
 }

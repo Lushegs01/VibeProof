@@ -37,10 +37,30 @@ export function canonicalProofMetadata(p: ProofSubmission & { chainId: number; c
     const v = p[k];
     if (v) obj[k] = v;
   }
-  const sorted = Object.fromEntries(Object.keys(obj).sort().map((k) => [k, obj[k]]));
+  const sorted = Object.fromEntries(
+    Object.keys(obj)
+      .sort()
+      .map((k) => [k, obj[k]]),
+  );
   return JSON.stringify(sorted);
 }
 
 export function proofMetadataHash(p: Parameters<typeof canonicalProofMetadata>[0]) {
   return keccak256(toBytes(canonicalProofMetadata(p)));
+}
+
+const CanonicalDocumentSchema = ProofSubmissionSchema.extend({
+  chainId: z.number().int().positive().safe(),
+  creator: z.string().regex(/^0x[0-9a-f]{40}$/),
+  token: z.string().regex(/^0x[0-9a-f]{40}$/),
+  schema: z.literal("vibeproof.proof.v1"),
+}).strict();
+
+/** Reject duplicate keys, unknown fields, non-canonical encoding and ambiguous optional values. */
+export function parseCanonicalProof(bytes: Uint8Array) {
+  if (bytes.length > 16_384) throw new Error("Evidence document exceeds 16 KiB");
+  const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  const document = CanonicalDocumentSchema.parse(JSON.parse(text));
+  if (canonicalProofMetadata(document) !== text) throw new Error("Document is not canonical v1 JSON");
+  return document;
 }

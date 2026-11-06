@@ -11,7 +11,12 @@ export default defineConfig({
   testDir: "tests/e2e",
   timeout: 60_000,
   retries: 0,
-  use: { baseURL: `http://localhost:${port}`, trace: "retain-on-failure", launchOptions: { executablePath } },
+  use: {
+    extraHTTPHeaders: { origin: `http://localhost:${port}` },
+    baseURL: `http://localhost:${port}`,
+    trace: "retain-on-failure",
+    launchOptions: { executablePath },
+  },
   projects: [
     { name: "desktop", use: { ...devices["Desktop Chrome"], launchOptions: { executablePath } } },
     { name: "mobile", use: { ...devices["Pixel 7"], launchOptions: { executablePath } } },
@@ -20,6 +25,6 @@ export default defineConfig({
     command: `npx next start -p ${port}`,
     port,
     reuseExistingServer: false,
-    env: { NEXT_PUBLIC_DEMO_MODE: "true", NEXT_DIST_DIR: ".next-e2e", DATABASE_URL: "", REDIS_URL: "" },
+    env: { NEXT_PUBLIC_DEMO_MODE: "true", NEXT_DIST_DIR: ".next-e2e", DATABASE_URL: "", REDIS_URL: process.env.REDIS_URL ?? "" },
   },
 });

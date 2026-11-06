@@ -1,0 +1,5 @@
+
+> vibeproof@0.1.0 format:check
+> node scripts/format.mjs
+
+119 changed/new source files checked

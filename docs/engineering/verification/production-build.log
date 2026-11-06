@@ -1,0 +1,78 @@
+
+> vibeproof@0.1.0 build
+> next build
+
+▲ Next.js 16.4.5 (Turbopack)
+- Environments: .env
+✓ Running next.config.ts took 77ms
+
+  Creating an optimized production build ...
+✓ Compiled successfully in 16.8s
+  Running TypeScript ...
+  Finished TypeScript in 18.6s ...
+  Collecting page data using 2 workers ...
+  Generating static pages using 2 workers (0/29) ...
+  Generating static pages using 2 workers (7/29)
+  Generating static pages using 2 workers (14/29)
+  Generating static pages using 2 workers (21/29)
+✓ Generating static pages using 2 workers (29/29) in 478ms
+  Finalizing page optimization ...
+
+Route (app)                              Revalidate  Expire
+┌ ○ /                                           30s      1y
+├ ○ /_not-found
+├ ƒ /activity
+├ ƒ /api/account
+├ ƒ /api/activity
+├ ƒ /api/auth/logout
+├ ƒ /api/auth/nonce
+├ ƒ /api/auth/session
+├ ƒ /api/auth/verify
+├ ƒ /api/creators/[address]
+├ ƒ /api/cron/indexer
+├ ƒ /api/cron/monitor
+├ ƒ /api/developer/keys
+├ ƒ /api/developer/webhooks
+├ ƒ /api/discover
+├ ƒ /api/evidence/[hash]
+├ ƒ /api/health
+├ ƒ /api/live
+├ ƒ /api/notifications
+├ ƒ /api/ops
+├ ƒ /api/proofs
+├ ƒ /api/proofs/anchor
+├ ƒ /api/proofs/control
+├ ƒ /api/proofs/verify
+├ ƒ /api/ready
+├ ƒ /api/search
+├ ƒ /api/tokens/[address]
+├ ƒ /api/tokens/[address]/activity
+├ ƒ /api/tokens/[address]/changes
+├ ƒ /api/tokens/[address]/contract
+├ ƒ /api/tokens/[address]/holders
+├ ƒ /api/tokens/[address]/proof
+├ ƒ /api/tokens/[address]/proof/recheck
+├ ƒ /api/tokens/[address]/share
+├ ƒ /api/v1/discover
+├ ƒ /api/v1/openapi
+├ ƒ /api/v1/tokens/[address]
+├ ƒ /api/watchlist
+├ ƒ /creator/[address]
+├ ○ /developers
+├ ƒ /discover
+├ ƒ /embed/badge/[address]
+├ ○ /icon.svg
+├ ○ /invalid-address
+├ ○ /methodology
+├ ○ /operations
+├ ƒ /p/[id]
+├ ƒ /p/[id]/opengraph-image-1ll1n9
+├ ƒ /submit
+├ ƒ /token/[chain]/[address]
+└ ○ /watchlist
+
+
+ƒ Proxy (Middleware)
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand

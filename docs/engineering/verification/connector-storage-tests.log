@@ -1,0 +1,12 @@
+The plugin "vite-tsconfig-paths" is detected. Vite now supports tsconfig paths resolution natively via the resolve.tsconfigPaths option. You can remove the plugin and set resolve.tsconfigPaths: true in your Vite config instead.
+
+ RUN  v5.1.0 /workspace/VibeProof
+
+
+ Test Files  3 passed (3)
+      Tests  9 passed (9)
+   Start at  18:55:24
+   Duration  9.74s (import 67%, transform 25%, tests 8%, worker 1%)
+
+    Isolate  3 workers spawned · ~1.26s startup each (spawn + environment, per file)
+             at least ~2.53s faster with isolate: false — reuses workers across files instead of one per file

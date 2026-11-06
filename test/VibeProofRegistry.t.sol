@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
+import {LocalLaunchFactory} from "./fixtures/LocalLaunchFactory.sol";
 import {Test} from "forge-std/Test.sol";
 import {VibeProofRegistry} from "../contracts/VibeProofRegistry.sol";
 
@@ -201,5 +202,34 @@ contract VibeProofRegistryTest is Test {
         assertEq(p.creator, creator);
         assertEq(p.metadataHash, h);
         assertEq(keccak256(bytes(p.metadataURI)), keccak256(bytes(uri)));
+    }
+}
+
+contract RegistryInvariantHandler {
+    VibeProofRegistry public immutable registry;
+    address public immutable token;
+    bytes32 public lastHash;
+    constructor(VibeProofRegistry r,address t) { registry=r; token=t; }
+    function anchor(bytes32 hash_) external {
+        if(hash_==bytes32(0)) return;
+        if(!registry.hasProof(address(this),token)) registry.submitProof(token,hash_,"ipfs://invariant-fixture");
+        else if(lastHash!=hash_) registry.updateProof(token,hash_,"ipfs://invariant-fixture");
+        lastHash=hash_;
+    }
+}
+contract VibeProofRegistryInvariantTest is Test {
+    VibeProofRegistry registry;
+    RegistryInvariantHandler handler;
+    address token;
+    function setUp() public {
+        registry=new VibeProofRegistry(); token=address(new DummyToken());
+        handler=new RegistryInvariantHandler(registry,token); targetContract(address(handler));
+    }
+    function invariant_oneSubmitterAndNoCustody() public view {
+        assertLe(registry.submitterCount(token),1); assertEq(address(registry).balance,0);
+        if(registry.hasProof(address(handler),token)) {
+            VibeProofRegistry.Proof memory p=registry.getProof(address(handler),token);
+            assertEq(p.creator,address(handler)); assertEq(p.token,token); assertEq(p.metadataHash,handler.lastHash());
+        }
     }
 }

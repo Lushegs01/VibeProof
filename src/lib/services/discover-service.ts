@@ -11,11 +11,28 @@ const { tokens, launches, projectProofs } = schema;
 
 export const SORTS = {
   newest: { label: "Newest", explain: "Launch block timestamp, most recent first.", needsHistory: false },
-  transactions: { label: "Most transactions", explain: "Count of ERC-20 Transfer events observed since launch. Only launches whose complete history is indexed are ranked.", needsHistory: true },
-  holders: { label: "Most holders", explain: "Wallets with a positive balance, excluding zero/dead, the token itself, the curve and protocol contracts. Only launches whose complete history is indexed are ranked.", needsHistory: true },
-  active: { label: "Most recently active", explain: "Timestamp of the latest observed Transfer or curve trade. Only launches whose complete history is indexed are ranked.", needsHistory: true },
-  verified: { label: "Most recently verified", explain: "Most recent project proof submission.", needsHistory: false },
-  graduated: { label: "Recently graduated", explain: "Graduation event timestamp (only launches with an observed Graduated event on their own curve).", needsHistory: false },
+  transactions: {
+    label: "Most transactions",
+    explain: "Count of ERC-20 Transfer events observed since launch. Only launches whose complete history is indexed are ranked.",
+    needsHistory: true,
+  },
+  holders: {
+    label: "Most holders",
+    explain:
+      "Wallets with a positive balance, excluding zero/dead, the token itself, the curve and protocol contracts. Only launches whose complete history is indexed are ranked.",
+    needsHistory: true,
+  },
+  active: {
+    label: "Most recently active",
+    explain: "Timestamp of the latest observed Transfer or curve trade. Only launches whose complete history is indexed are ranked.",
+    needsHistory: true,
+  },
+  verified: { label: "Latest proof submissions", explain: "Most recent project proof submission.", needsHistory: false },
+  graduated: {
+    label: "Recently graduated",
+    explain: "Graduation event timestamp (only launches with an observed Graduated event on their own curve).",
+    needsHistory: false,
+  },
 } as const;
 export type SortKey = keyof typeof SORTS;
 
@@ -76,7 +93,9 @@ async function build(sort: SortKey, category: CategoryKey, limit: number, chainI
     .limit(limit);
   let excludedIncomplete: number | null = null;
   if (SORTS[sort].needsHistory) {
-    const [r] = await db.execute<{ n: string }>(sql`select count(*)::text as n from tokens where chain_id = ${chainId} and is_vibe_launch and not activity_covered`);
+    const [r] = await db.execute<{ n: string }>(
+      sql`select count(*)::text as n from tokens where chain_id = ${chainId} and is_vibe_launch and not activity_covered`,
+    );
     excludedIncomplete = Number(r?.n ?? 0);
   }
   return {
@@ -101,18 +120,48 @@ async function build(sort: SortKey, category: CategoryKey, limit: number, chainI
   };
 }
 
-export async function discover(sort: SortKey = "newest", category: CategoryKey = "all", limit = 50, network?: NetworkSlug | string | null): Promise<DiscoverResult> {
+export async function discover(
+  sort: SortKey = "newest",
+  category: CategoryKey = "all",
+  limit = 50,
+  network?: NetworkSlug | string | null,
+): Promise<DiscoverResult> {
   if (isDemoMode()) {
     const at = (h: number) => new Date(Date.parse("2026-09-27T12:00:00Z") + h * 3600_000).toISOString();
-    let items: DiscoverItem[] = DEMO_TOKENS.map((t) => ({ chain: "robinhood-testnet", address: t.addr, name: t.name, symbol: t.symbol, creator: t.creator, createdAt: at(t.hours), holders: t.holders, transactions: t.txs, lastActivityAt: at(71 - t.hours / 10), status: t.graduated ? "graduated" : "bonding", historyComplete: true, launchpad: "vibe", deploymentId: "v6-run15", proofSubmitted: t.proof > 0, sourceVerified: t.verified }));
+    let items: DiscoverItem[] = DEMO_TOKENS.map((t) => ({
+      chain: "robinhood-testnet",
+      address: t.addr,
+      name: t.name,
+      symbol: t.symbol,
+      creator: t.creator,
+      createdAt: at(t.hours),
+      holders: t.holders,
+      transactions: t.txs,
+      lastActivityAt: at(71 - t.hours / 10),
+      status: t.graduated ? "graduated" : "bonding",
+      historyComplete: true,
+      launchpad: "vibe",
+      deploymentId: "v6-run15",
+      proofSubmitted: t.proof > 0,
+      sourceVerified: t.verified,
+    }));
     if (category === "product-backed") items = items.filter((i) => i.proofSubmitted);
     if (category === "graduated") items = items.filter((i) => i.status === "graduated");
     if (category === "source-verified") items = items.filter((i) => i.sourceVerified);
-    const key: Record<SortKey, (i: DiscoverItem) => number> = { newest: (i) => +new Date(i.createdAt!), transactions: (i) => i.transactions ?? -1, holders: (i) => i.holders ?? -1, active: (i) => +new Date(i.lastActivityAt!), verified: (i) => (i.proofSubmitted ? 1 : 0), graduated: (i) => (i.status === "graduated" ? 1 : 0) };
+    const key: Record<SortKey, (i: DiscoverItem) => number> = {
+      newest: (i) => +new Date(i.createdAt!),
+      transactions: (i) => i.transactions ?? -1,
+      holders: (i) => i.holders ?? -1,
+      active: (i) => +new Date(i.lastActivityAt!),
+      verified: (i) => (i.proofSubmitted ? 1 : 0),
+      graduated: (i) => (i.status === "graduated" ? 1 : 0),
+    };
     return { items: items.sort((a, b) => key[sort](b) - key[sort](a)), cached: false, excludedIncomplete: SORTS[sort].needsHistory ? 0 : null };
   }
   const net = serviceNetwork(network);
-  const { value, cached: hit } = await cached(`discover:v2:${net.chainId}:${sort}:${category}:${limit}`, { ttl: 15, swr: 120 }, () => build(sort, category, limit, net.chainId, net.slug));
+  const { value, cached: hit } = await cached(`discover:v2:${net.chainId}:${sort}:${category}:${limit}`, { ttl: 15, swr: 120 }, () =>
+    build(sort, category, limit, net.chainId, net.slug),
+  );
   return { ...value, cached: hit };
 }
 
@@ -137,7 +186,17 @@ export type FeedItem = {
 export async function activityFeed(limit = 60, network?: NetworkSlug | string | null): Promise<FeedItem[]> {
   if (isDemoMode()) {
     const at = (h: number) => new Date(Date.parse("2026-09-27T12:00:00Z") + h * 3600_000).toISOString();
-    const d = (id: string, kind: string, message: string, i: number, sym: string, tx: string | null, h: number): FeedItem => ({ id, chain: "robinhood-testnet", kind, message, token: DEMO_TOKENS[i].addr, symbol: sym, txHash: tx, block: null, at: at(h) });
+    const d = (id: string, kind: string, message: string, i: number, sym: string, tx: string | null, h: number): FeedItem => ({
+      id,
+      chain: "robinhood-testnet",
+      kind,
+      message,
+      token: DEMO_TOKENS[i].addr,
+      symbol: sym,
+      txHash: tx,
+      block: null,
+      at: at(h),
+    });
     return [
       d("d4", "holders", "42 new holders observed", 0, "LATTICE", null, 71.8),
       d("d3", "creator_activity", "Creator wallet bought on the bonding curve", 1, "QLDG", `0x${"cd".repeat(32)}`, 71.2),
@@ -150,7 +209,17 @@ export async function activityFeed(limit = 60, network?: NetworkSlug | string | 
   const net = serviceNetwork(network);
   const n = Math.max(1, Math.min(200, limit));
   const { value } = await cached(`feed:v2:${net.chainId}:${n}`, { ttl: 5, swr: 30 }, async () => {
-    const rows = await db.execute<{ id: string; kind: string; message: string; token_address: string; tx_hash: string | null; block: string | null; at: Date; data: Record<string, unknown> | null; symbol: string | null }>(sql`
+    const rows = await db.execute<{
+      id: string;
+      kind: string;
+      message: string;
+      token_address: string;
+      tx_hash: string | null;
+      block: string | null;
+      at: Date;
+      data: Record<string, unknown> | null;
+      symbol: string | null;
+    }>(sql`
       with f as (
         (select 'f' || id as id, kind, message, token_address, tx_hash, block_number::text as block, created_at as at, data
            from feed_events where chain_id = ${net.chainId} order by created_at desc limit ${n})
@@ -163,16 +232,46 @@ export async function activityFeed(limit = 60, network?: NetworkSlug | string | 
       )
       select f.*, t.symbol from f left join tokens t on t.chain_id = ${net.chainId} and t.address = f.token_address
       order by f.at desc limit ${n}`);
-    return [...rows].map((r) => ({ id: r.id, chain: net.slug, kind: r.kind, message: r.message, token: getAddress(r.token_address), symbol: r.symbol, txHash: r.tx_hash, block: r.block, at: new Date(r.at).toISOString(), data: r.data }));
+    return [...rows].map((r) => ({
+      id: r.id,
+      chain: net.slug,
+      kind: r.kind,
+      message: r.message,
+      token: getAddress(r.token_address),
+      symbol: r.symbol,
+      txHash: r.tx_hash,
+      block: r.block,
+      at: new Date(r.at).toISOString(),
+      data: r.data,
+    }));
   });
   return value;
 }
 
-export type EcosystemStats = { network: string; launches: number; creators: number; covered: number; graduated: number; pendingHistory: number; indexedThrough: string | null; demo: boolean };
+export type EcosystemStats = {
+  network: string;
+  launches: number;
+  creators: number;
+  covered: number;
+  graduated: number;
+  pendingHistory: number;
+  indexedThrough: string | null;
+  demo: boolean;
+};
 
 /** Real counts for the landing page. null when there is no database (never fabricated). */
 export async function ecosystemStats(network?: NetworkSlug | string | null): Promise<EcosystemStats | null> {
-  if (isDemoMode()) return { network: "robinhood-testnet", launches: DEMO_TOKENS.length, creators: 2, covered: DEMO_TOKENS.length, graduated: DEMO_TOKENS.filter((t) => t.graduated).length, pendingHistory: 0, indexedThrough: "126600000", demo: true };
+  if (isDemoMode())
+    return {
+      network: "robinhood-testnet",
+      launches: DEMO_TOKENS.length,
+      creators: 2,
+      covered: DEMO_TOKENS.length,
+      graduated: DEMO_TOKENS.filter((t) => t.graduated).length,
+      pendingHistory: 0,
+      indexedThrough: "126600000",
+      demo: true,
+    };
   const db = getDb();
   if (!db) return null;
   const net = serviceNetwork(network);
@@ -185,7 +284,16 @@ export async function ecosystemStats(network?: NetworkSlug | string | null): Pro
              (select count(*) from launches where chain_id = ${c} and status = 'graduated') as graduated,
              (select count(*) from backfill_queue where chain_id = ${c} and status in ('pending', 'started', 'failed')) as pending,
              (select last_block::text from indexer_state where key = ${`activity:${c}`}) as cursor`);
-    return { network: net.slug, launches: Number(r.launches), creators: Number(r.creators), covered: Number(r.covered), graduated: Number(r.graduated), pendingHistory: Number(r.pending), indexedThrough: r.cursor, demo: false };
+    return {
+      network: net.slug,
+      launches: Number(r.launches),
+      creators: Number(r.creators),
+      covered: Number(r.covered),
+      graduated: Number(r.graduated),
+      pendingHistory: Number(r.pending),
+      indexedThrough: r.cursor,
+      demo: false,
+    };
   });
   return value;
 }

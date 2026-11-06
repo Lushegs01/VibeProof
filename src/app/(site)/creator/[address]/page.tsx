@@ -34,7 +34,10 @@ export default async function CreatorPage({ params, searchParams }: Props) {
         <div className="mt-4">
           <Address value={a} short={false} className="text-lg" />
         </div>
-        <p className="mt-6 max-w-lg text-fg-2">No launches from this wallet have been observed by the VibeProof indexer on this network. This is an observation about our index, not a statement about the wallet.</p>
+        <p className="mt-6 max-w-lg text-fg-2">
+          No launches from this wallet have been observed by the VibeProof indexer on this network. This is an observation about our index, not a statement
+          about the wallet.
+        </p>
       </div>
     );
 
@@ -67,6 +70,37 @@ export default async function CreatorPage({ params, searchParams }: Props) {
         </dl>
       </header>
 
+      {creator.timeline?.length ? (
+        <Section title="Evidence timeline" kicker="observations and their sources">
+          <ol className="space-y-3">
+            {creator.timeline.map((e, i) => (
+              <li key={`${e.at}:${i}`} className="rounded-xl border border-line p-4 text-sm">
+                <strong>{e.kind.replaceAll("_", " ")}</strong> ·{" "}
+                <Link href={tokenPath(e.token, creator.chain as NetworkSlug)} className="text-accent">
+                  {shortAddress(e.token)}
+                </Link>
+                <p className="text-xs text-fg-2">
+                  Observed {formatUtc(e.at)}
+                  {e.txHash ? (
+                    <>
+                      {" "}
+                      · <a href={explorerLink("tx", e.txHash, creator.chain as NetworkSlug)}>Transaction evidence</a>
+                    </>
+                  ) : (
+                    " · Off-chain observation"
+                  )}
+                </p>
+                {e.evidence != null && (
+                  <details className="mt-2 text-xs">
+                    <summary>Source and limitations</summary>
+                    <pre className="overflow-auto whitespace-pre-wrap">{JSON.stringify(e.evidence, null, 2)}</pre>
+                  </details>
+                )}
+              </li>
+            ))}
+          </ol>
+        </Section>
+      ) : null}
       <Section title="Observed history" kicker="chronological, newest first">
         <div className="overflow-x-auto rounded-[20px] border border-line bg-surface/50">
           <table className="w-full min-w-[680px] text-sm">
@@ -97,15 +131,27 @@ export default async function CreatorPage({ params, searchParams }: Props) {
                   <td className="px-4 py-3">
                     <LaunchStatus status={l.status} />
                   </td>
-                  <td className="px-4 py-3 text-right font-mono tabular">{l.holders === null ? <span className="text-fg-2">{l.historyComplete ? "Unavailable" : "History pending"}</span> : formatInt(l.holders)}</td>
-                  <td className="px-4 py-3 text-right font-mono tabular">{l.transactions === null ? <span className="text-fg-2">{l.historyComplete ? "Unavailable" : "History pending"}</span> : formatInt(l.transactions)}</td>
-                  <td className="px-4 py-3 font-mono text-xs text-fg-2">{!l.historyComplete ? "Unavailable" : l.lastActivityAt ? timeAgo(l.lastActivityAt) : "None observed"}</td>
+                  <td className="px-4 py-3 text-right font-mono tabular">
+                    {l.holders === null ? <span className="text-fg-2">{l.historyComplete ? "Unavailable" : "History pending"}</span> : formatInt(l.holders)}
+                  </td>
+                  <td className="px-4 py-3 text-right font-mono tabular">
+                    {l.transactions === null ? (
+                      <span className="text-fg-2">{l.historyComplete ? "Unavailable" : "History pending"}</span>
+                    ) : (
+                      formatInt(l.transactions)
+                    )}
+                  </td>
+                  <td className="px-4 py-3 font-mono text-xs text-fg-2">
+                    {!l.historyComplete ? "Unavailable" : l.lastActivityAt ? timeAgo(l.lastActivityAt) : "None observed"}
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-        <p className="mt-4 text-xs text-muted">VibeProof does not label creators. Relationships between wallets are not inferred; only launches whose event names this wallet are listed.</p>
+        <p className="mt-4 text-xs text-muted">
+          VibeProof does not label creators. Relationships between wallets are not inferred; only launches whose event names this wallet are listed.
+        </p>
       </Section>
     </div>
   );

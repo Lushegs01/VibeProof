@@ -1,0 +1,24 @@
+{
+  "source": "npm audit --json after clean npm ci",
+  "counts": {
+    "info": 0,
+    "low": 0,
+    "moderate": 0,
+    "high": 0,
+    "critical": 0,
+    "total": 0
+  },
+  "highOrCriticalPackages": [],
+  "resolution": [
+    "Exact direct dependency pins; fresh lockfile excludes unused optional wallet adapters.",
+    "Use @walletconnect/universal-provider 2.26.0 with local QR UI instead of bundled EthereumProvider application UI.",
+    "Scoped @metamask/utils uuid 11.1.1 override, with actual createSandbox consumer verified.",
+    "Scoped @esbuild-kit/core-utils esbuild 0.25.12 override, with drizzle-kit check and config loading verified."
+  ],
+  "limitations": [
+    "Scanner result is point-in-time, not an independent security audit.",
+    "Real WalletConnect relay and extension/mobile deep-link compatibility require configured provider and actual devices."
+  ],
+  "lockfileSha256": "2c34c39549c64e1af7ba67460b1a97e0d39abf4c943b66552a31090153b6b658",
+  "checkedAt": "2026-11-06T07:11:44.943039+00:00"
+}

@@ -103,6 +103,8 @@ export function isPublicIp(ip: string): boolean {
     if ((p[0] & 0xff00) === 0xff00) return false; // multicast
     if (p[0] === 0x2001 && p[1] === 0x0db8) return false; // documentation
     if (p[0] === 0x2002) return false; // 6to4 can embed private v4
+    if ((p[0] & 0xe000) !== 0x2000) return false; // Only global-unicast allocations.
+    if (p[0] === 0x2001 && p[1] < 0x0200) return false; // Teredo and special-purpose assignments.
     return true;
   }
   return false;
