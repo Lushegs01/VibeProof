@@ -94,7 +94,7 @@ export function PassportView({ p, series, publicView = false }: { p: TokenPasspo
         </div>
 
         {/* Dimension strip — deliberately NOT a single score */}
-        <dl className="mt-8 grid grid-cols-2 gap-px overflow-hidden rounded-[20px] border border-[#5cc6ea2e] bg-[#5cc6ea1f] md:grid-cols-4">
+        <dl className="mt-8 grid grid-cols-2 gap-px overflow-hidden rounded-[20px] border border-accent/20 bg-accent/10 md:grid-cols-4">
           <Dim
             k="Contract"
             href="#contract"

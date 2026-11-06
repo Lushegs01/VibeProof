@@ -8,7 +8,13 @@ export function ActivityChart({ series, height = 120 }: { series: SeriesPoint[];
   const total = series.reduce((a, p) => a + p.transfers + p.buys + p.sells, 0);
   return (
     <figure>
-      <svg viewBox={`0 0 100 ${height}`} preserveAspectRatio="none" className="h-[120px] w-full" role="img" aria-label={`Event activity: ${total} events across ${series.length} buckets`}>
+      <svg
+        viewBox={`0 0 100 ${height}`}
+        preserveAspectRatio="none"
+        className="h-[120px] w-full"
+        role="img"
+        aria-label={`Event activity: ${total} events across ${series.length} buckets`}
+      >
         {series.map((p, i) => {
           const tH = (p.transfers / max) * (height - 4);
           const bH = (p.buys / max) * (height - 4);
@@ -18,7 +24,7 @@ export function ActivityChart({ series, height = 120 }: { series: SeriesPoint[];
           return (
             <g key={p.t}>
               <title>{`${new Date(p.t).toISOString().slice(0, 13).replace("T", " ")}:00 UTC · ${p.transfers} transfers · ${p.buys} buys · ${p.sells} sells`}</title>
-              <rect x={x} y={height - tH} width={bw} height={tH} fill="#2a2a2a" />
+              <rect x={x} y={height - tH} width={bw} height={tH} fill="var(--color-line-strong)" />
               <rect x={x} y={height - tH - bH} width={bw} height={bH} fill="var(--color-accent)" opacity={0.75} />
               <rect x={x} y={height - tH - bH - sH} width={bw} height={sH} fill="var(--color-observed)" opacity={0.7} />
             </g>
@@ -26,11 +32,12 @@ export function ActivityChart({ series, height = 120 }: { series: SeriesPoint[];
         })}
       </svg>
       <figcaption className="mt-3 flex flex-wrap gap-4 text-xs text-fg-2">
-        <Legend color="#2a2a2a" label="Transfers" />
+        <Legend color="var(--color-line-strong)" label="Transfers" />
         <Legend color="var(--color-accent)" label="Curve buys" />
         <Legend color="var(--color-observed)" label="Curve sells" />
         <span className="ml-auto font-mono">
-          {new Date(series[0].t).toISOString().slice(5, 13).replace("T", " ")}h → {new Date(series[series.length - 1].t).toISOString().slice(5, 13).replace("T", " ")}h UTC
+          {new Date(series[0].t).toISOString().slice(5, 13).replace("T", " ")}h →{" "}
+          {new Date(series[series.length - 1].t).toISOString().slice(5, 13).replace("T", " ")}h UTC
         </span>
       </figcaption>
     </figure>
